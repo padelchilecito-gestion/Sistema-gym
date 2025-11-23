@@ -11,8 +11,16 @@ export enum MembershipStatus {
 
 export type SubscriptionPlan = 'Basic' | 'Standard' | 'Full';
 
-// NUEVO: Definimos los roles disponibles
 export type UserRole = 'admin' | 'instructor' | 'client';
+
+// NUEVO: Interfaz para el Staff (Instructores y Admins)
+export interface Staff {
+  id: string;
+  name: string;
+  email: string;
+  role: 'admin' | 'instructor';
+  password?: string; // En producción real esto no debería guardarse plano, pero sirve para el MVP
+}
 
 export interface GymSettings {
   name: string;
@@ -40,9 +48,10 @@ export interface Client {
   lastVisit: string;
   birthDate: string; 
   assignedRoutineId?: string;
+  routineStartDate?: string; // NUEVO: Para saber qué día le toca
   emergencyContact?: string;
   lastMembershipPayment?: string;
-  password?: string; // NUEVO: Contraseña para que el cliente entre a su portal
+  password?: string; 
 }
 
 export interface Transaction {
@@ -78,6 +87,7 @@ export interface Routine {
   difficulty: 'Principiante' | 'Intermedio' | 'Avanzado';
   description: string;
   exercisesCount: number;
+  // Aquí podrías agregar un array de ejercicios en el futuro
 }
 
 export interface TimeSlot {
