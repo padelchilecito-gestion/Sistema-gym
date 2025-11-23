@@ -1,39 +1,38 @@
 import React, { useState } from 'react';
 import { Client, MembershipStatus } from '../types';
-import { Search, Plus, MoreHorizontal, User, Mail, Phone, Edit, Trash2, DollarSign, X, Save } from 'lucide-react';
+import { Search, Plus, MoreHorizontal, User, Mail, Phone, Edit, Trash2, DollarSign, X } from 'lucide-react';
 
 interface ClientsProps {
   clients: Client[];
   addClient: (client: Client) => void;
   updateClient: (id: string, data: Partial<Client>) => void;
   deleteClient: (id: string) => void;
+  // ESTA ES LA LÍNEA QUE FALTABA Y CAUSABA EL ERROR EN VERCEL:
+  registerPayment: (client: Client, amount: number, description: string) => void;
 }
 
-export const Clients: React.FC<ClientsProps> = ({ clients, addClient, updateClient, deleteClient }) => {
+export const Clients: React.FC<ClientsProps> = ({ clients, addClient, updateClient, deleteClient, registerPayment }) => {
   const [searchTerm, setSearchTerm] = useState('');
   
-  // Modales
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
 
-  // Estados para formularios
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [paymentAmount, setPaymentAmount] = useState<string>('');
+  const [paymentDescription, setPaymentDescription] = useState<string>('Pago Mensualidad');
 
   const [formData, setFormData] = useState<Partial<Client>>({
     status: MembershipStatus.ACTIVE,
     balance: 0,
-    plan: 'Standard' // Valor por defecto interno, no visible
+    plan: 'Standard'
   });
 
   const filteredClients = clients.filter(client =>
     client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     client.email.toLowerCase().includes(searchTerm.toLowerCase())
   );
-
-  // --- HANDLERS ---
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,7 +45,7 @@ export const Clients: React.FC<ClientsProps> = ({ clients, addClient, updateClie
         joinDate: new Date().toISOString().split('T')[0],
         status: formData.status as MembershipStatus,
         balance: Number(formData.balance) || 0,
-        plan: 'Standard', // Forzamos un plan por defecto
+        plan: 'Standard',
         points: 0,
         level: 'Bronze',
         streak: 0,
@@ -72,24 +71,24 @@ export const Clients: React.FC<ClientsProps> = ({ clients, addClient, updateClie
   const handlePayment = (e: React.FormEvent) => {
     e.preventDefault();
     if (selectedClient && paymentAmount) {
-      // Pagar significa SUMAR al saldo (reducir deuda negativa o aumentar crédito positivo)
-      const newBalance = selectedClient.balance + parseFloat(paymentAmount);
-      updateClient(selectedClient.id, { balance: newBalance });
+      registerPayment(selectedClient, parseFloat(paymentAmount), paymentDescription);
       setIsPaymentModalOpen(false);
       setPaymentAmount('');
+      setPaymentDescription('Pago Mensualidad');
       setSelectedClient(null);
     }
   };
 
   const openEdit = (client: Client) => {
     setSelectedClient(client);
-    setFormData(client); // Cargar datos existentes
+    setFormData(client);
     setIsEditModalOpen(true);
     setActiveMenuId(null);
   };
 
   const openPayment = (client: Client) => {
     setSelectedClient(client);
+    setPaymentDescription(`Pago Mensualidad - ${client.name}`);
     setIsPaymentModalOpen(true);
     setActiveMenuId(null);
   };
@@ -106,7 +105,7 @@ export const Clients: React.FC<ClientsProps> = ({ clients, addClient, updateClie
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" size={20} />
           <input
             type="text"
-            placeholder="Buscar cliente por nombre o email..."
+            placeholder="Buscar cliente..."
             className="w-full pl-10 pr-4 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -149,12 +148,8 @@ export const Clients: React.FC<ClientsProps> = ({ clients, addClient, updateClie
                   </td>
                   <td className="px-6 py-4 hidden md:table-cell">
                     <div className="flex flex-col space-y-1">
-                      <div className="flex items-center gap-2 text-slate-600">
-                        <Mail size={14} /> {client.email}
-                      </div>
-                      <div className="flex items-center gap-2 text-slate-600">
-                        <Phone size={14} /> {client.phone}
-                      </div>
+                      <div className="flex items-center gap-2 text-slate-600"><Mail size={14} /> {client.email}</div>
+                      <div className="flex items-center gap-2 text-slate-600"><Phone size={14} /> {client.phone}</div>
                     </div>
                   </td>
                   <td className="px-6 py-4">
@@ -166,32 +161,20 @@ export const Clients: React.FC<ClientsProps> = ({ clients, addClient, updateClie
                     </span>
                   </td>
                   <td className="px-6 py-4">
-                    {/* LÓGICA CORREGIDA: Negativo es Rojo (Deuda), Positivo es Verde (Favor) */}
                     <span className={client.balance < 0 ? 'text-red-600 font-bold' : 'text-green-600 font-bold'}>
                       ${client.balance.toFixed(2)}
                     </span>
                   </td>
                   <td className="px-6 py-4 text-right relative">
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); setActiveMenuId(activeMenuId === client.id ? null : client.id); }}
-                      className="text-slate-400 hover:text-slate-600 p-2"
-                    >
+                    <button onClick={(e) => { e.stopPropagation(); setActiveMenuId(activeMenuId === client.id ? null : client.id); }} className="text-slate-400 hover:text-slate-600 p-2">
                       <MoreHorizontal size={20} />
                     </button>
-                    
-                    {/* Menú Desplegable */}
                     {activeMenuId === client.id && (
-                      <div className="absolute right-8 top-8 w-48 bg-white rounded-lg shadow-xl border border-slate-100 z-50 overflow-hidden animate-in fade-in zoom-in duration-200">
-                        <button onClick={() => openEdit(client)} className="w-full text-left px-4 py-3 hover:bg-slate-50 text-slate-700 flex items-center gap-2">
-                          <Edit size={16} /> Editar Datos
-                        </button>
-                        <button onClick={() => openPayment(client)} className="w-full text-left px-4 py-3 hover:bg-slate-50 text-emerald-600 flex items-center gap-2 font-medium">
-                          <DollarSign size={16} /> Registrar Pago
-                        </button>
+                      <div className="absolute right-8 top-8 w-48 bg-white rounded-lg shadow-xl border border-slate-100 z-50 overflow-hidden">
+                        <button onClick={() => openEdit(client)} className="w-full text-left px-4 py-3 hover:bg-slate-50 text-slate-700 flex items-center gap-2"><Edit size={16} /> Editar Datos</button>
+                        <button onClick={() => openPayment(client)} className="w-full text-left px-4 py-3 hover:bg-slate-50 text-emerald-600 flex items-center gap-2 font-medium"><DollarSign size={16} /> Registrar Pago</button>
                         <div className="border-t border-slate-100 my-1"></div>
-                        <button onClick={() => handleDelete(client.id)} className="w-full text-left px-4 py-3 hover:bg-red-50 text-red-600 flex items-center gap-2">
-                          <Trash2 size={16} /> Eliminar
-                        </button>
+                        <button onClick={() => handleDelete(client.id)} className="w-full text-left px-4 py-3 hover:bg-red-50 text-red-600 flex items-center gap-2"><Trash2 size={16} /> Eliminar</button>
                       </div>
                     )}
                   </td>
@@ -202,7 +185,6 @@ export const Clients: React.FC<ClientsProps> = ({ clients, addClient, updateClie
         </div>
       </div>
 
-      {/* MODAL CREAR / EDITAR */}
       {(isModalOpen || isEditModalOpen) && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={(e) => e.stopPropagation()}>
           <div className="bg-white rounded-xl max-w-lg w-full p-6 shadow-xl max-h-[90vh] overflow-y-auto">
@@ -210,86 +192,51 @@ export const Clients: React.FC<ClientsProps> = ({ clients, addClient, updateClie
                <h2 className="text-xl font-bold text-slate-800">{isEditModalOpen ? 'Editar Cliente' : 'Nuevo Cliente'}</h2>
                <button onClick={() => { setIsModalOpen(false); setIsEditModalOpen(false); }} className="text-slate-400 hover:text-slate-600"><X size={20}/></button>
             </div>
-            
             <form onSubmit={isEditModalOpen ? handleUpdate : handleCreate} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Nombre Completo</label>
-                <input required type="text" className="w-full p-2 border border-slate-300 rounded-lg"
-                  value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} />
-              </div>
-
+              <div><label className="block text-sm font-medium text-slate-700 mb-1">Nombre</label><input required type="text" className="w-full p-2 border border-slate-300 rounded-lg" value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} /></div>
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
-                  <input required type="email" className="w-full p-2 border border-slate-300 rounded-lg"
-                    value={formData.email || ''} onChange={e => setFormData({...formData, email: e.target.value})} />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Teléfono</label>
-                  <input type="tel" className="w-full p-2 border border-slate-300 rounded-lg"
-                    value={formData.phone || ''} onChange={e => setFormData({...formData, phone: e.target.value})} />
-                </div>
+                <div><label className="block text-sm font-medium text-slate-700 mb-1">Email</label><input required type="email" className="w-full p-2 border border-slate-300 rounded-lg" value={formData.email || ''} onChange={e => setFormData({...formData, email: e.target.value})} /></div>
+                <div><label className="block text-sm font-medium text-slate-700 mb-1">Teléfono</label><input type="tel" className="w-full p-2 border border-slate-300 rounded-lg" value={formData.phone || ''} onChange={e => setFormData({...formData, phone: e.target.value})} /></div>
               </div>
-
-              {/* NUEVOS CAMPOS */}
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Fecha Nacimiento</label>
-                  <input required type="date" className="w-full p-2 border border-slate-300 rounded-lg"
-                    value={formData.birthDate || ''} onChange={e => setFormData({...formData, birthDate: e.target.value})} />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Contacto Emergencia</label>
-                  <input type="tel" placeholder="Opcional" className="w-full p-2 border border-slate-300 rounded-lg"
-                    value={formData.emergencyContact || ''} onChange={e => setFormData({...formData, emergencyContact: e.target.value})} />
-                </div>
+                <div><label className="block text-sm font-medium text-slate-700 mb-1">Fecha Nacimiento</label><input required type="date" className="w-full p-2 border border-slate-300 rounded-lg" value={formData.birthDate || ''} onChange={e => setFormData({...formData, birthDate: e.target.value})} /></div>
+                <div><label className="block text-sm font-medium text-slate-700 mb-1">Contacto Emergencia</label><input type="tel" className="w-full p-2 border border-slate-300 rounded-lg" value={formData.emergencyContact || ''} onChange={e => setFormData({...formData, emergencyContact: e.target.value})} /></div>
               </div>
-
-              {/* SALDO INICIAL SOLO AL CREAR */}
               {!isEditModalOpen && (
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Saldo Inicial (Positivo=Favor, Negativo=Deuda)</label>
-                  <input type="number" className="w-full p-2 border border-slate-300 rounded-lg"
-                    value={formData.balance} onChange={e => setFormData({...formData, balance: parseFloat(e.target.value)})} />
-                </div>
+                <div><label className="block text-sm font-medium text-slate-700 mb-1">Saldo Inicial</label><input type="number" className="w-full p-2 border border-slate-300 rounded-lg" value={formData.balance} onChange={e => setFormData({...formData, balance: parseFloat(e.target.value)})} /></div>
               )}
-
               <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100">
-                <button type="button" onClick={() => { setIsModalOpen(false); setIsEditModalOpen(false); }}
-                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium">Cancelar</button>
-                <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">
-                  {isEditModalOpen ? 'Guardar Cambios' : 'Crear Cliente'}
-                </button>
+                <button type="button" onClick={() => { setIsModalOpen(false); setIsEditModalOpen(false); }} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium">Cancelar</button>
+                <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">{isEditModalOpen ? 'Guardar' : 'Crear'}</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* MODAL DE PAGO */}
       {isPaymentModalOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={(e) => e.stopPropagation()}>
           <div className="bg-white rounded-xl max-w-sm w-full p-6 shadow-xl">
              <h3 className="text-xl font-bold text-slate-800 mb-2">Registrar Pago</h3>
-             <p className="text-sm text-slate-500 mb-4">Ingresa el monto que el cliente está pagando presencialmente. Se sumará a su saldo.</p>
-             
-             <div className="mb-4 p-3 bg-slate-50 rounded-lg text-center">
-                <p className="text-xs text-slate-400 uppercase">Saldo Actual</p>
-                <p className={`text-xl font-bold ${selectedClient!.balance < 0 ? 'text-red-600' : 'text-green-600'}`}>
-                  ${selectedClient?.balance}
-                </p>
-             </div>
-
+             <p className="text-sm text-slate-500 mb-4">Esto sumará saldo al cliente y creará un ingreso en Contabilidad.</p>
              <form onSubmit={handlePayment}>
-                <div className="relative mb-6">
-                  <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                  <input autoFocus type="number" step="0.01" required placeholder="0.00"
-                    className="w-full pl-10 p-3 text-lg font-bold border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
-                    value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} />
+                <div className="mb-4">
+                  <label className="block text-xs text-slate-500 mb-1">Monto ($)</label>
+                  <div className="relative">
+                    <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                    <input autoFocus type="number" step="0.01" required placeholder="0.00"
+                      className="w-full pl-10 p-3 text-lg font-bold border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
+                      value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} />
+                  </div>
+                </div>
+                <div className="mb-6">
+                   <label className="block text-xs text-slate-500 mb-1">Concepto</label>
+                   <input type="text" className="w-full p-2 border border-slate-300 rounded-lg text-sm"
+                     value={paymentDescription} onChange={e => setPaymentDescription(e.target.value)} />
                 </div>
                 <div className="flex gap-3">
                    <button type="button" onClick={() => setIsPaymentModalOpen(false)} className="flex-1 py-3 text-slate-600 hover:bg-slate-100 rounded-xl font-medium">Cancelar</button>
-                   <button type="submit" className="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 shadow-lg shadow-emerald-200">Confirmar Pago</button>
+                   <button type="submit" className="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 shadow-lg shadow-emerald-200">Cobrar</button>
                 </div>
              </form>
           </div>
