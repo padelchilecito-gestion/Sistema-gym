@@ -7,7 +7,6 @@ interface ClientsProps {
   addClient: (client: Client) => void;
   updateClient: (id: string, data: Partial<Client>) => void;
   deleteClient: (id: string) => void;
-  // ESTA ES LA LÍNEA QUE FALTABA Y CAUSABA EL ERROR EN VERCEL:
   registerPayment: (client: Client, amount: number, description: string) => void;
 }
 
@@ -23,10 +22,11 @@ export const Clients: React.FC<ClientsProps> = ({ clients, addClient, updateClie
   const [paymentAmount, setPaymentAmount] = useState<string>('');
   const [paymentDescription, setPaymentDescription] = useState<string>('Pago Mensualidad');
 
+  // Estado inicial del formulario
   const [formData, setFormData] = useState<Partial<Client>>({
     status: MembershipStatus.ACTIVE,
     balance: 0,
-    plan: 'Standard'
+    plan: 'basic' // Valor por defecto: Cuota Básica
   });
 
   const filteredClients = clients.filter(client =>
@@ -45,7 +45,7 @@ export const Clients: React.FC<ClientsProps> = ({ clients, addClient, updateClie
         joinDate: new Date().toISOString().split('T')[0],
         status: formData.status as MembershipStatus,
         balance: Number(formData.balance) || 0,
-        plan: 'Standard',
+        plan: formData.plan || 'basic', // Guardamos el tipo de cuota
         points: 0,
         level: 'Bronze',
         streak: 0,
@@ -55,7 +55,7 @@ export const Clients: React.FC<ClientsProps> = ({ clients, addClient, updateClie
       };
       addClient(clientToAdd);
       setIsModalOpen(false);
-      setFormData({ status: MembershipStatus.ACTIVE, balance: 0, plan: 'Standard' });
+      setFormData({ status: MembershipStatus.ACTIVE, balance: 0, plan: 'basic' });
     }
   };
 
@@ -98,6 +98,12 @@ export const Clients: React.FC<ClientsProps> = ({ clients, addClient, updateClie
     setActiveMenuId(null);
   };
 
+  // Helper para mostrar nombre bonito del plan
+  const getPlanName = (planCode: string) => {
+    const names: Record<string, string> = { basic: 'Básica', intermediate: 'Intermedia', full: 'Full' };
+    return names[planCode] || planCode;
+  };
+
   return (
     <div className="p-4 sm:p-6 space-y-6 min-h-screen" onClick={() => setActiveMenuId(null)}>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -112,7 +118,7 @@ export const Clients: React.FC<ClientsProps> = ({ clients, addClient, updateClie
           />
         </div>
         <button
-          onClick={(e) => { e.stopPropagation(); setIsModalOpen(true); setFormData({ status: MembershipStatus.ACTIVE, balance: 0, plan: 'Standard' }); }}
+          onClick={(e) => { e.stopPropagation(); setIsModalOpen(true); setFormData({ status: MembershipStatus.ACTIVE, balance: 0, plan: 'basic' }); }}
           className="flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium"
         >
           <Plus size={20} />
@@ -127,6 +133,7 @@ export const Clients: React.FC<ClientsProps> = ({ clients, addClient, updateClie
               <tr>
                 <th className="px-6 py-4 font-semibold text-slate-700">Cliente</th>
                 <th className="px-6 py-4 font-semibold text-slate-700 hidden md:table-cell">Contacto</th>
+                <th className="px-6 py-4 font-semibold text-slate-700">Cuota</th>
                 <th className="px-6 py-4 font-semibold text-slate-700">Estado</th>
                 <th className="px-6 py-4 font-semibold text-slate-700">Saldo</th>
                 <th className="px-6 py-4 font-semibold text-slate-700 text-right">Acciones</th>
@@ -151,6 +158,11 @@ export const Clients: React.FC<ClientsProps> = ({ clients, addClient, updateClie
                       <div className="flex items-center gap-2 text-slate-600"><Mail size={14} /> {client.email}</div>
                       <div className="flex items-center gap-2 text-slate-600"><Phone size={14} /> {client.phone}</div>
                     </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className="bg-indigo-50 text-indigo-700 px-2 py-1 rounded-md text-xs font-bold border border-indigo-100">
+                      {getPlanName(client.plan)}
+                    </span>
                   </td>
                   <td className="px-6 py-4">
                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
@@ -198,12 +210,24 @@ export const Clients: React.FC<ClientsProps> = ({ clients, addClient, updateClie
                 <div><label className="block text-sm font-medium text-slate-700 mb-1">Email</label><input required type="email" className="w-full p-2 border border-slate-300 rounded-lg" value={formData.email || ''} onChange={e => setFormData({...formData, email: e.target.value})} /></div>
                 <div><label className="block text-sm font-medium text-slate-700 mb-1">Teléfono</label><input type="tel" className="w-full p-2 border border-slate-300 rounded-lg" value={formData.phone || ''} onChange={e => setFormData({...formData, phone: e.target.value})} /></div>
               </div>
+              
+              {/* NUEVO SELECTOR DE TIPO DE CUOTA */}
               <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Tipo de Cuota</label>
+                  <select className="w-full p-2 border border-slate-300 rounded-lg" value={formData.plan} onChange={e => setFormData({...formData, plan: e.target.value})}>
+                    <option value="basic">Básica</option>
+                    <option value="intermediate">Intermedia</option>
+                    <option value="full">Full</option>
+                  </select>
+                </div>
                 <div><label className="block text-sm font-medium text-slate-700 mb-1">Fecha Nacimiento</label><input required type="date" className="w-full p-2 border border-slate-300 rounded-lg" value={formData.birthDate || ''} onChange={e => setFormData({...formData, birthDate: e.target.value})} /></div>
-                <div><label className="block text-sm font-medium text-slate-700 mb-1">Contacto Emergencia</label><input type="tel" className="w-full p-2 border border-slate-300 rounded-lg" value={formData.emergencyContact || ''} onChange={e => setFormData({...formData, emergencyContact: e.target.value})} /></div>
               </div>
+              
+              <div><label className="block text-sm font-medium text-slate-700 mb-1">Contacto Emergencia</label><input type="tel" className="w-full p-2 border border-slate-300 rounded-lg" value={formData.emergencyContact || ''} onChange={e => setFormData({...formData, emergencyContact: e.target.value})} /></div>
+
               {!isEditModalOpen && (
-                <div><label className="block text-sm font-medium text-slate-700 mb-1">Saldo Inicial</label><input type="number" className="w-full p-2 border border-slate-300 rounded-lg" value={formData.balance} onChange={e => setFormData({...formData, balance: parseFloat(e.target.value)})} /></div>
+                <div><label className="block text-sm font-medium text-slate-700 mb-1">Monto Inicial a Cargar (Dinero)</label><input type="number" className="w-full p-2 border border-slate-300 rounded-lg" value={formData.balance} onChange={e => setFormData({...formData, balance: parseFloat(e.target.value)})} /></div>
               )}
               <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100">
                 <button type="button" onClick={() => { setIsModalOpen(false); setIsEditModalOpen(false); }} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium">Cancelar</button>
@@ -214,6 +238,7 @@ export const Clients: React.FC<ClientsProps> = ({ clients, addClient, updateClie
         </div>
       )}
 
+      {/* MODAL DE PAGO (Mismo código que antes) */}
       {isPaymentModalOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={(e) => e.stopPropagation()}>
           <div className="bg-white rounded-xl max-w-sm w-full p-6 shadow-xl">
