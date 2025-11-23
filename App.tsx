@@ -36,7 +36,7 @@ function App() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [checkIns, setCheckIns] = useState<CheckIn[]>([]);
-  const [routines, setRoutines] = useState<Routine[]>([]); // NUEVO: Estado global de rutinas
+  const [routines, setRoutines] = useState<Routine[]>([]); 
   
   const [gymSettings, setGymSettings] = useState<GymSettings>({
     name: 'GymFlow Fitness',
@@ -78,11 +78,9 @@ function App() {
     return () => unsubscribe();
   }, []);
 
-  // Sincronizar Rutinas (NUEVO)
   useEffect(() => {
     const q = query(collection(db, 'routines'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      // Si está vacío (primer uso), inicializamos con algunas por defecto localmente para que no se vea feo
       if (snapshot.empty) {
          const initial: Routine[] = [
             { id: 'r1', name: 'Hipertrofia Total', difficulty: 'Avanzado', description: '5 días a la semana, enfoque en ganancia muscular.', exercisesCount: 24 },
@@ -188,26 +186,23 @@ function App() {
     await setDoc(doc(db, 'products', product.id), product);
   };
 
-  // NUEVO: Marcar Entrada
   const handleCheckIn = async (client: Client) => {
     const newCheckIn: CheckIn = {
       id: crypto.randomUUID(),
       clientId: client.id,
       clientName: client.name,
       timestamp: new Date().toISOString(),
-      checkoutTimestamp: null // Empieza nulo porque está adentro
+      checkoutTimestamp: null 
     };
     await setDoc(doc(db, 'checkins', newCheckIn.id), newCheckIn);
   };
 
-  // NUEVO: Marcar Salida
   const handleCheckOut = async (checkInId: string) => {
     await updateDoc(doc(db, 'checkins', checkInId), {
       checkoutTimestamp: new Date().toISOString()
     });
   };
 
-  // NUEVO: Crear/Asignar Rutina
   const addRoutine = async (routine: Routine) => {
     await setDoc(doc(db, 'routines', routine.id), routine);
   };
@@ -232,12 +227,11 @@ function App() {
              <Monitor size={14} /> Cambiar a Admin (PC)
            </button>
         </div>
-        {/* Pasamos checkIns y rutinas al Portal para que el cliente vea su sesión */}
         <ClientPortal 
           client={clients[0] || { id: 'demo', name: 'Usuario Demo', email: 'demo@gym.com', phone: '', joinDate: '', status: MembershipStatus.ACTIVE, balance: 0, plan: 'basic', points: 0, level: 'Bronze', streak: 0, lastVisit: '', birthDate: '' }} 
           settings={gymSettings} 
-          checkIns={checkIns} // NUEVO
-          routines={routines} // NUEVO
+          checkIns={checkIns} 
+          routines={routines} 
           onLogout={() => setCurrentRole('admin')} 
         />
       </>
@@ -280,24 +274,17 @@ function App() {
             <NavItem view="clients" label="Clientes" icon={Users} requiredPlan="basic" />
             <NavItem view="accounting" label="Contabilidad" icon={Calculator} requiredPlan="basic" />
             
-            {/* AccessControl actualizado con handleCheckOut */}
-            {hasFeature('standard') && (
-                currentView === 'access' ? 
-                <AccessControl checkIns={checkIns} clients={clients} onCheckIn={handleCheckIn} onCheckOut={handleCheckOut} /> :
-                <NavItem view="access" label="Control Acceso" icon={ScanLine} requiredPlan="standard" />
-            )}
+            {/* CORRECCIÓN: Ahora solo usamos NavItem, nunca renderizamos el componente aquí */}
+            {hasFeature('standard') && <NavItem view="access" label="Control Acceso" icon={ScanLine} requiredPlan="standard" />}
             
             {hasFeature('full') && <NavItem view="inventory" label="Inventario" icon={Package} requiredPlan="full" />}
             
-            {/* Workouts actualizado con addRoutine y rutinas globales */}
+            {/* CORRECCIÓN: Igual aquí, solo NavItem */}
             {hasFeature('full') && (
               <div className="pt-4 mt-4 border-t border-slate-100">
                 <div className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Fidelización</div>
                 <NavItem view="gamification" label="Gamificación" icon={Trophy} requiredPlan="full" />
-                {currentView === 'workouts' ? 
-                  <Workouts clients={clients} routines={routines} addRoutine={addRoutine} updateClient={updateClient} /> :
-                  <NavItem view="workouts" label="Entrenamientos" icon={Activity} requiredPlan="full" />
-                }
+                <NavItem view="workouts" label="Entrenamientos" icon={Activity} requiredPlan="full" />
               </div>
             )}
             
@@ -342,7 +329,7 @@ function App() {
              {currentView === 'accounting' && <Accounting transactions={transactions} addTransaction={addTransaction} updateTransaction={updateTransaction} deleteTransaction={deleteTransaction} clients={clients} />}
              {currentView === 'inventory' && <Inventory products={products} addProduct={addProduct} />}
              
-             {/* Aquí renderizamos AccessControl directamente cuando el view coincide, para pasar props extras */}
+             {/* El contenido de AccessControl se renderiza AQUÍ, no en el sidebar */}
              {currentView === 'access' && <AccessControl checkIns={checkIns} clients={clients} onCheckIn={handleCheckIn} onCheckOut={handleCheckOut} />}
              
              {currentView === 'notifications' && <Notifications clients={clients} />}
