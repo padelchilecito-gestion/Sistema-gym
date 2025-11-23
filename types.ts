@@ -9,12 +9,19 @@ export enum MembershipStatus {
   PENDING = 'Pendiente',
 }
 
+// Esto es TU plan como dueño del software (no tocar)
 export type SubscriptionPlan = 'Basic' | 'Standard' | 'Full';
 
 export interface GymSettings {
   name: string;
   logoUrl: string;
-  plan: SubscriptionPlan;
+  plan: SubscriptionPlan; 
+  // NUEVO: Aquí guardarás los precios que TÚ cobras a tus alumnos
+  membershipPrices: {
+    basic: number;        // Precio Cuota Básica
+    intermediate: number; // Precio Cuota Intermedia
+    full: number;         // Precio Cuota Full
+  };
 }
 
 export interface Client {
@@ -25,7 +32,8 @@ export interface Client {
   joinDate: string;
   status: MembershipStatus;
   balance: number; // Positivo = A favor, Negativo = Deuda
-  plan: string;
+  plan: string;    // Aquí guardaremos 'basic', 'intermediate' o 'full'
+  
   // New fields
   points: number;
   level: 'Bronze' | 'Silver' | 'Gold';
@@ -34,7 +42,7 @@ export interface Client {
   birthDate: string; 
   assignedRoutineId?: string;
   emergencyContact?: string;
-  lastMembershipPayment?: string; // NUEVO: Fecha del último cobro de cuota
+  lastMembershipPayment?: string;
 }
 
 export interface Transaction {
