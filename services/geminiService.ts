@@ -1,7 +1,11 @@
 import { GoogleGenAI } from "@google/genai";
 import { Transaction, Client, CheckIn, BusinessPrediction } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// CORRECCIÓN: Usamos el estándar de Vite (import.meta.env)
+// Si la clave no existe, usamos un string vacío para evitar que la app explote al iniciarse
+const apiKey = import.meta.env.VITE_GEMINI_API_KEY || "";
+
+const ai = new GoogleGenAI({ apiKey });
 
 export const analyzeFinancialData = async (
   transactions: Transaction[],
@@ -9,12 +13,13 @@ export const analyzeFinancialData = async (
   query: string
 ): Promise<string> => {
   
-  // Prepare a summary of data to reduce token usage while keeping context
+  if (!apiKey) return "Error: API Key no configurada.";
+
   const financialSummary = {
     totalClients: clients.length,
-    activeClients: clients.filter(c => c.status === 'Activo').length,
+    activeClients: clients.filter(c => c.status === 'Activo').length, // Nota: Asegúrate de que coincida con tu Enum
     clientsWithDebt: clients.filter(c => c.balance > 0).map(c => ({ name: c.name, debt: c.balance })),
-    recentTransactions: transactions.slice(0, 50), // Last 50 transactions
+    recentTransactions: transactions.slice(0, 50), 
   };
 
   const systemPrompt = `
@@ -53,12 +58,15 @@ export const generateBusinessPrediction = async (
   checkIns: CheckIn[]
 ): Promise<BusinessPrediction | null> => {
   
-  // Aggregate data for the model
+  if (!apiKey) {
+      console.error("API Key missing");
+      return null;
+  }
+
   const currentMonthRevenue = transactions
     .filter(t => t.type === 'Ingreso' && new Date(t.date).getMonth() === new Date().getMonth())
     .reduce((acc, curr) => acc + curr.amount, 0);
 
-  // Simplified checkin aggregation by hour (mock logic preparation for AI)
   const checkinHours = checkIns.map(c => new Date(c.timestamp).getHours());
   
   const dataContext = {
