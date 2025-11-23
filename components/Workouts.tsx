@@ -1,27 +1,47 @@
 import React, { useState } from 'react';
 import { Routine, Client } from '../types';
-import { Dumbbell, Plus, ChevronRight, UserPlus, Activity } from 'lucide-react';
+import { Dumbbell, Plus, ChevronRight, UserPlus, Activity, X } from 'lucide-react';
 
+// Aceptamos rutinas desde App.tsx y funciones para editar clientes/rutinas
 interface WorkoutsProps {
   clients: Client[];
+  routines: Routine[]; // NUEVO
+  addRoutine: (routine: Routine) => void; // NUEVO
+  updateClient: (id: string, data: Partial<Client>) => void; // NUEVO
 }
 
-// Mock Routines
-const initialRoutines: Routine[] = [
-  { id: 'r1', name: 'Hipertrofia Total', difficulty: 'Avanzado', description: '5 días a la semana, enfoque en ganancia muscular.', exercisesCount: 24 },
-  { id: 'r2', name: 'Pérdida de Peso Express', difficulty: 'Intermedio', description: 'Circuito HIIT de 30 minutos para quemar grasa.', exercisesCount: 8 },
-  { id: 'r3', name: 'Iniciación GymFlow', difficulty: 'Principiante', description: 'Adaptación anatómica para nuevos miembros.', exercisesCount: 12 },
-];
-
-export const Workouts: React.FC<WorkoutsProps> = ({ clients }) => {
-  const [routines, setRoutines] = useState<Routine[]>(initialRoutines);
-  const [selectedRoutine, setSelectedRoutine] = useState<string | null>(null);
+export const Workouts: React.FC<WorkoutsProps> = ({ clients, routines, addRoutine, updateClient }) => {
+  const [selectedRoutineId, setSelectedRoutineId] = useState<string | null>(null);
   const [assignModalOpen, setAssignModalOpen] = useState(false);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+
+  // Formulario nueva rutina
+  const [newRoutine, setNewRoutine] = useState<Partial<Routine>>({
+    difficulty: 'Intermedio',
+    exercisesCount: 0
+  });
+
+  const handleCreateRoutine = (e: React.FormEvent) => {
+    e.preventDefault();
+    if(newRoutine.name && newRoutine.description) {
+        addRoutine({
+            id: crypto.randomUUID(),
+            name: newRoutine.name,
+            description: newRoutine.description,
+            difficulty: newRoutine.difficulty as any,
+            exercisesCount: Number(newRoutine.exercisesCount) || 5
+        });
+        setCreateModalOpen(false);
+        setNewRoutine({ difficulty: 'Intermedio', exercisesCount: 0 });
+    }
+  };
 
   const handleAssign = (clientId: string) => {
-    // In a real app, this would update the client state via a prop function
-    alert(`Rutina asignada al cliente ${clientId} exitosamente.`);
-    setAssignModalOpen(false);
+    if (selectedRoutineId) {
+        updateClient(clientId, { assignedRoutineId: selectedRoutineId });
+        setAssignModalOpen(false);
+        alert('Rutina asignada exitosamente');
+    }
   };
 
   return (
@@ -29,12 +49,11 @@ export const Workouts: React.FC<WorkoutsProps> = ({ clients }) => {
       <div className="flex items-center justify-between">
         <div>
             <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-                <Dumbbell className="text-blue-600" />
-                Entrenamiento Inteligente
+                <Dumbbell className="text-blue-600" /> Entrenamiento Inteligente
             </h2>
             <p className="text-slate-500">Gestiona rutinas y asígnalas a tus clientes.</p>
         </div>
-        <button className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-700 transition-colors font-medium shadow-sm">
+        <button onClick={() => setCreateModalOpen(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-700 transition-colors font-medium shadow-sm">
             <Plus size={18} /> Nueva Rutina
         </button>
       </div>
@@ -60,7 +79,7 @@ export const Workouts: React.FC<WorkoutsProps> = ({ clients }) => {
                     <div className="flex items-center justify-between text-sm text-slate-400 pt-4 border-t border-slate-100">
                         <span>{routine.exercisesCount} Ejercicios</span>
                         <button 
-                            onClick={() => { setSelectedRoutine(routine.id); setAssignModalOpen(true); }}
+                            onClick={() => { setSelectedRoutineId(routine.id); setAssignModalOpen(true); }}
                             className="text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1"
                         >
                             Asignar <ChevronRight size={16} />
@@ -73,20 +92,19 @@ export const Workouts: React.FC<WorkoutsProps> = ({ clients }) => {
 
       {/* Assign Modal */}
       {assignModalOpen && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={(e) => e.stopPropagation()}>
               <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-xl">
-                  <h3 className="text-xl font-bold text-slate-800 mb-4">Asignar Rutina</h3>
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-xl font-bold text-slate-800">Asignar Rutina</h3>
+                    <button onClick={() => setAssignModalOpen(false)}><X size={20} className="text-slate-400"/></button>
+                  </div>
                   <p className="text-slate-600 mb-4 text-sm">
-                      Selecciona el cliente para asignarle: <span className="font-bold text-slate-900">{routines.find(r => r.id === selectedRoutine)?.name}</span>
+                      Selecciona el cliente para asignarle: <span className="font-bold text-slate-900">{routines.find(r => r.id === selectedRoutineId)?.name}</span>
                   </p>
                   
                   <div className="max-h-60 overflow-y-auto space-y-2 mb-6 border border-slate-100 rounded-lg divide-y divide-slate-100">
                       {clients.map(client => (
-                          <button 
-                            key={client.id}
-                            onClick={() => handleAssign(client.id)}
-                            className="w-full text-left p-3 hover:bg-slate-50 flex items-center justify-between group"
-                          >
+                          <button key={client.id} onClick={() => handleAssign(client.id)} className="w-full text-left p-3 hover:bg-slate-50 flex items-center justify-between group">
                               <div>
                                 <p className="font-medium text-slate-800">{client.name}</p>
                                 <p className="text-xs text-slate-500">{client.plan}</p>
@@ -95,15 +113,30 @@ export const Workouts: React.FC<WorkoutsProps> = ({ clients }) => {
                           </button>
                       ))}
                   </div>
+              </div>
+          </div>
+      )}
 
-                  <div className="flex justify-end">
-                      <button 
-                        onClick={() => setAssignModalOpen(false)}
-                        className="text-slate-500 font-medium px-4 py-2 hover:bg-slate-100 rounded-lg"
-                      >
-                          Cancelar
-                      </button>
+      {/* Create Modal */}
+      {createModalOpen && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={(e) => e.stopPropagation()}>
+              <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-xl">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-xl font-bold text-slate-800">Crear Nueva Rutina</h3>
+                    <button onClick={() => setCreateModalOpen(false)}><X size={20} className="text-slate-400"/></button>
                   </div>
+                  <form onSubmit={handleCreateRoutine} className="space-y-4">
+                      <div><label className="block text-sm font-medium text-slate-700">Nombre</label><input required type="text" className="w-full p-2 border rounded" value={newRoutine.name || ''} onChange={e => setNewRoutine({...newRoutine, name: e.target.value})} /></div>
+                      <div><label className="block text-sm font-medium text-slate-700">Descripción</label><input required type="text" className="w-full p-2 border rounded" value={newRoutine.description || ''} onChange={e => setNewRoutine({...newRoutine, description: e.target.value})} /></div>
+                      <div className="grid grid-cols-2 gap-4">
+                          <div><label className="block text-sm font-medium text-slate-700">Dificultad</label>
+                          <select className="w-full p-2 border rounded" value={newRoutine.difficulty} onChange={e => setNewRoutine({...newRoutine, difficulty: e.target.value as any})}>
+                              <option>Principiante</option><option>Intermedio</option><option>Avanzado</option>
+                          </select></div>
+                          <div><label className="block text-sm font-medium text-slate-700">Ejercicios</label><input type="number" className="w-full p-2 border rounded" value={newRoutine.exercisesCount} onChange={e => setNewRoutine({...newRoutine, exercisesCount: Number(e.target.value)})} /></div>
+                      </div>
+                      <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded-lg font-bold">Guardar</button>
+                  </form>
               </div>
           </div>
       )}
