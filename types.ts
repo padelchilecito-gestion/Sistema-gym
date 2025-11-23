@@ -9,18 +9,16 @@ export enum MembershipStatus {
   PENDING = 'Pendiente',
 }
 
-// Esto es TU plan como dueño del software (no tocar)
 export type SubscriptionPlan = 'Basic' | 'Standard' | 'Full';
 
 export interface GymSettings {
   name: string;
   logoUrl: string;
   plan: SubscriptionPlan; 
-  // NUEVO: Aquí guardarás los precios que TÚ cobras a tus alumnos
   membershipPrices: {
-    basic: number;        // Precio Cuota Básica
-    intermediate: number; // Precio Cuota Intermedia
-    full: number;         // Precio Cuota Full
+    basic: number;
+    intermediate: number;
+    full: number;
   };
 }
 
@@ -31,16 +29,14 @@ export interface Client {
   phone: string;
   joinDate: string;
   status: MembershipStatus;
-  balance: number; // Positivo = A favor, Negativo = Deuda
-  plan: string;    // Aquí guardaremos 'basic', 'intermediate' o 'full'
-  
-  // New fields
+  balance: number; 
+  plan: string;
   points: number;
   level: 'Bronze' | 'Silver' | 'Gold';
   streak: number; 
   lastVisit: string;
   birthDate: string; 
-  assignedRoutineId?: string;
+  assignedRoutineId?: string; // ID de la rutina asignada
   emergencyContact?: string;
   lastMembershipPayment?: string;
 }
@@ -53,13 +49,6 @@ export interface Transaction {
   date: string;
   type: TransactionType;
   category: string; 
-}
-
-export interface DashboardStats {
-  totalRevenue: number;
-  totalExpenses: number;
-  netIncome: number;
-  activeMembers: number;
 }
 
 export interface Product {
@@ -75,7 +64,8 @@ export interface CheckIn {
   id: string;
   clientId: string;
   clientName: string;
-  timestamp: string; 
+  timestamp: string; // Hora de entrada
+  checkoutTimestamp?: string | null; // NUEVO: Hora de salida (puede ser null si sigue adentro)
 }
 
 export interface Routine {
@@ -84,6 +74,7 @@ export interface Routine {
   difficulty: 'Principiante' | 'Intermedio' | 'Avanzado';
   description: string;
   exercisesCount: number;
+  // Podríamos agregar detalle de ejercicios aquí en el futuro
 }
 
 export interface TimeSlot {
