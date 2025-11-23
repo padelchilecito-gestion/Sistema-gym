@@ -26,7 +26,6 @@ export const Accounting: React.FC<AccountingProps> = ({ transactions, addTransac
 
   const filteredTransactions = useMemo(() => {
     return transactions.filter(t => {
-      const d = new Date(t.date);
       const [year, month] = t.date.split('-').map(Number);
       return year === selectedYear && (month - 1) === selectedMonth;
     }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -39,17 +38,26 @@ export const Accounting: React.FC<AccountingProps> = ({ transactions, addTransac
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (formData.description && formData.amount) {
-      if (editingId) {
-        updateTransaction(editingId, formData);
-      } else {
-        addTransaction({
-          id: crypto.randomUUID(),
+      // CORRECCIÓN FIREBASE: Limpiamos los datos antes de enviar
+      // Si clientId está vacío o indefinido, no lo enviamos
+      const cleanData: any = {
           description: formData.description,
           amount: Number(formData.amount),
           date: formData.date || new Date().toISOString().split('T')[0],
           type: formData.type as TransactionType,
           category: formData.category || 'Varios',
-          clientId: formData.clientId
+      };
+
+      if (formData.clientId) {
+          cleanData.clientId = formData.clientId;
+      }
+
+      if (editingId) {
+        updateTransaction(editingId, cleanData);
+      } else {
+        addTransaction({
+          id: crypto.randomUUID(),
+          ...cleanData
         });
       }
       closeModal();
@@ -213,7 +221,7 @@ export const Accounting: React.FC<AccountingProps> = ({ transactions, addTransac
                   <select className="w-full p-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>
                     {formData.type === TransactionType.INCOME ? (
                       <>
-                        <option value="Cuota">Cuota</option> {/* AGREGADO AQUÍ */}
+                        <option value="Cuota">Cuota</option>
                         <option value="Mensualidad">Mensualidad</option>
                         <option value="Productos">Venta Productos</option>
                         <option value="Servicios">Servicios Personalizados</option>
