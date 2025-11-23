@@ -13,13 +13,19 @@ import { MarketingCRM } from './components/MarketingCRM';
 import { Settings } from './components/Settings';
 import { ClientPortal } from './components/ClientPortal';
 import { PredictiveAnalytics } from './components/PredictiveAnalytics';
-import { Client, Transaction, Product, CheckIn, GymSettings, MembershipStatus, TransactionType } from './types';
+import { Client, Transaction, Product, CheckIn, GymSettings, MembershipStatus, TransactionType, Routine } from './types';
 
 import { db } from './firebase';
 import { collection, setDoc, doc, onSnapshot, query, orderBy, deleteDoc, updateDoc } from 'firebase/firestore';
 
 type View = 'dashboard' | 'clients' | 'accounting' | 'ai' | 'access' | 'inventory' | 'notifications' | 'gamification' | 'workouts' | 'marketing' | 'settings' | 'predictive';
 type Role = 'admin' | 'client';
+
+const PLAN_PRICES: Record<string, number> = {
+  'Básico': 3000,
+  'Standard': 5000,
+  'Premium': 7000
+};
 
 function App() {
   const [currentView, setCurrentView] = useState<View>('dashboard');
@@ -30,12 +36,13 @@ function App() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [checkIns, setCheckIns] = useState<CheckIn[]>([]);
+  const [routines, setRoutines] = useState<Routine[]>([]); // NUEVO: Estado global de rutinas
   
   const [gymSettings, setGymSettings] = useState<GymSettings>({
     name: 'GymFlow Fitness',
     logoUrl: '',
     plan: 'Full',
-    membershipPrices: { basic: 0, intermediate: 0, full: 0 } // Valores por defecto
+    membershipPrices: { basic: 0, intermediate: 0, full: 0 }
   });
 
   // --- Sincronización Firebase ---
@@ -71,10 +78,28 @@ function App() {
     return () => unsubscribe();
   }, []);
 
+  // Sincronizar Rutinas (NUEVO)
+  useEffect(() => {
+    const q = query(collection(db, 'routines'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      // Si está vacío (primer uso), inicializamos con algunas por defecto localmente para que no se vea feo
+      if (snapshot.empty) {
+         const initial: Routine[] = [
+            { id: 'r1', name: 'Hipertrofia Total', difficulty: 'Avanzado', description: '5 días a la semana, enfoque en ganancia muscular.', exercisesCount: 24 },
+            { id: 'r2', name: 'Pérdida de Peso', difficulty: 'Intermedio', description: 'Circuito HIIT de 30 minutos para quemar grasa.', exercisesCount: 8 },
+            { id: 'r3', name: 'Iniciación', difficulty: 'Principiante', description: 'Adaptación anatómica para nuevos miembros.', exercisesCount: 12 },
+         ];
+         setRoutines(initial);
+      } else {
+         setRoutines(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Routine)));
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
   useEffect(() => {
     const unsubscribe = onSnapshot(doc(db, 'settings', 'config'), (doc) => {
       if (doc.exists()) {
-        // Forzamos el tipo para asegurar que membershipPrices exista
         const data = doc.data() as GymSettings;
         setGymSettings({
           ...data,
@@ -85,35 +110,26 @@ function App() {
     return () => unsubscribe();
   }, []);
 
-
-  // --- Helper para obtener precio ---
   const getPlanPrice = (planCode: string) => {
-    // Mapeo seguro usando los precios configurados
     const prices: any = gymSettings.membershipPrices || { basic: 0, intermediate: 0, full: 0 };
     return prices[planCode] || 0;
   };
 
-
   // --- Funciones de Acción ---
 
   const addClient = async (client: Client) => {
-    // 1. Buscamos el precio configurado en Settings
     const planPrice = getPlanPrice(client.plan);
-    
-    // 2. Descontamos el plan del saldo inicial
     const initialBalance = client.balance; 
     const finalBalance = initialBalance - planPrice;
 
-    // 3. Preparamos cliente
     const clientWithPayment = {
       ...client,
       balance: finalBalance, 
-      lastMembershipPayment: new Date().toISOString().split('T')[0] // Marcamos hoy como pagado
+      lastMembershipPayment: new Date().toISOString().split('T')[0]
     };
     
     await setDoc(doc(db, 'clients', client.id), clientWithPayment);
 
-    // 4. Si el plan tiene costo, registramos el ingreso en Contabilidad
     if (planPrice > 0) {
       const newTransaction: Transaction = {
         id: crypto.randomUUID(),
@@ -172,14 +188,28 @@ function App() {
     await setDoc(doc(db, 'products', product.id), product);
   };
 
+  // NUEVO: Marcar Entrada
   const handleCheckIn = async (client: Client) => {
     const newCheckIn: CheckIn = {
       id: crypto.randomUUID(),
       clientId: client.id,
       clientName: client.name,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      checkoutTimestamp: null // Empieza nulo porque está adentro
     };
     await setDoc(doc(db, 'checkins', newCheckIn.id), newCheckIn);
+  };
+
+  // NUEVO: Marcar Salida
+  const handleCheckOut = async (checkInId: string) => {
+    await updateDoc(doc(db, 'checkins', checkInId), {
+      checkoutTimestamp: new Date().toISOString()
+    });
+  };
+
+  // NUEVO: Crear/Asignar Rutina
+  const addRoutine = async (routine: Routine) => {
+    await setDoc(doc(db, 'routines', routine.id), routine);
   };
 
   const handleUpdateSettings = async (settings: GymSettings) => {
@@ -202,7 +232,14 @@ function App() {
              <Monitor size={14} /> Cambiar a Admin (PC)
            </button>
         </div>
-        <ClientPortal client={clients[0] || { id: 'demo', name: 'Usuario Demo', email: 'demo@gym.com', phone: '', joinDate: '', status: MembershipStatus.ACTIVE, balance: 0, plan: 'Básico', points: 0, level: 'Bronze', streak: 0, lastVisit: '', birthDate: '' }} settings={gymSettings} onLogout={() => setCurrentRole('admin')} />
+        {/* Pasamos checkIns y rutinas al Portal para que el cliente vea su sesión */}
+        <ClientPortal 
+          client={clients[0] || { id: 'demo', name: 'Usuario Demo', email: 'demo@gym.com', phone: '', joinDate: '', status: MembershipStatus.ACTIVE, balance: 0, plan: 'basic', points: 0, level: 'Bronze', streak: 0, lastVisit: '', birthDate: '' }} 
+          settings={gymSettings} 
+          checkIns={checkIns} // NUEVO
+          routines={routines} // NUEVO
+          onLogout={() => setCurrentRole('admin')} 
+        />
       </>
     );
   }
@@ -242,15 +279,28 @@ function App() {
             <NavItem view="dashboard" label="Dashboard" icon={LayoutDashboard} requiredPlan="basic" />
             <NavItem view="clients" label="Clientes" icon={Users} requiredPlan="basic" />
             <NavItem view="accounting" label="Contabilidad" icon={Calculator} requiredPlan="basic" />
-            {hasFeature('standard') && <NavItem view="access" label="Control Acceso" icon={ScanLine} requiredPlan="standard" />}
+            
+            {/* AccessControl actualizado con handleCheckOut */}
+            {hasFeature('standard') && (
+                currentView === 'access' ? 
+                <AccessControl checkIns={checkIns} clients={clients} onCheckIn={handleCheckIn} onCheckOut={handleCheckOut} /> :
+                <NavItem view="access" label="Control Acceso" icon={ScanLine} requiredPlan="standard" />
+            )}
+            
             {hasFeature('full') && <NavItem view="inventory" label="Inventario" icon={Package} requiredPlan="full" />}
+            
+            {/* Workouts actualizado con addRoutine y rutinas globales */}
             {hasFeature('full') && (
               <div className="pt-4 mt-4 border-t border-slate-100">
                 <div className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Fidelización</div>
                 <NavItem view="gamification" label="Gamificación" icon={Trophy} requiredPlan="full" />
-                <NavItem view="workouts" label="Entrenamientos" icon={Activity} requiredPlan="full" />
+                {currentView === 'workouts' ? 
+                  <Workouts clients={clients} routines={routines} addRoutine={addRoutine} updateClient={updateClient} /> :
+                  <NavItem view="workouts" label="Entrenamientos" icon={Activity} requiredPlan="full" />
+                }
               </div>
             )}
+            
             <div className="pt-4 mt-4 border-t border-slate-100">
                <div className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Marketing</div>
                <NavItem view="notifications" label="Cobranzas" icon={Bell} badge={debtorsCount} requiredPlan="basic" />
@@ -291,10 +341,13 @@ function App() {
              {currentView === 'clients' && <Clients clients={clients} addClient={addClient} updateClient={updateClient} deleteClient={deleteClient} registerPayment={registerPayment} />}
              {currentView === 'accounting' && <Accounting transactions={transactions} addTransaction={addTransaction} updateTransaction={updateTransaction} deleteTransaction={deleteTransaction} clients={clients} />}
              {currentView === 'inventory' && <Inventory products={products} addProduct={addProduct} />}
-             {currentView === 'access' && <AccessControl checkIns={checkIns} clients={clients} onCheckIn={handleCheckIn} />}
+             
+             {/* Aquí renderizamos AccessControl directamente cuando el view coincide, para pasar props extras */}
+             {currentView === 'access' && <AccessControl checkIns={checkIns} clients={clients} onCheckIn={handleCheckIn} onCheckOut={handleCheckOut} />}
+             
              {currentView === 'notifications' && <Notifications clients={clients} />}
              {currentView === 'gamification' && <Gamification clients={clients} />}
-             {currentView === 'workouts' && <Workouts clients={clients} />}
+             {currentView === 'workouts' && <Workouts clients={clients} routines={routines} addRoutine={addRoutine} updateClient={updateClient} />}
              {currentView === 'marketing' && <MarketingCRM clients={clients} />}
              {currentView === 'ai' && <AIAssistant transactions={transactions} clients={clients} />}
              {currentView === 'settings' && <Settings settings={gymSettings} onUpdateSettings={handleUpdateSettings} />}
