@@ -21,12 +21,11 @@ import { collection, setDoc, doc, onSnapshot, query, orderBy, deleteDoc, updateD
 type View = 'dashboard' | 'clients' | 'accounting' | 'ai' | 'access' | 'inventory' | 'notifications' | 'gamification' | 'workouts' | 'marketing' | 'settings' | 'predictive';
 type Role = 'admin' | 'client';
 
-// PRECIOS DE TUS PLANES (Configúralos aquí por ahora)
+// PRECIOS DE TUS PLANES
 const PLAN_PRICES: Record<string, number> = {
   'Básico': 3000,
   'Standard': 5000,
-  'Premium': 7000,
-  'Estándar': 5000 // Por si acaso hay variantes en el nombre
+  'Premium': 7000
 };
 
 function App() {
@@ -86,79 +85,96 @@ function App() {
   }, []);
 
 
-  // --- PROCESO DE COBRO AUTOMÁTICO DE CUOTAS ---
+  // --- PROCESO DE COBRO AUTOMÁTICO (SOLO PARA MESES FUTUROS) ---
   useEffect(() => {
     if (clients.length === 0) return;
 
     const checkMemberships = async () => {
       const today = new Date();
+      today.setHours(0,0,0,0);
       
       clients.forEach(async (client) => {
-        // Solo cobramos a clientes activos
         if (client.status !== MembershipStatus.ACTIVE) return;
 
-        // Determinamos la fecha del último cobro. Si no tiene, usamos la fecha de ingreso.
-        const lastPaymentStr = client.lastMembershipPayment || client.joinDate;
+        // Si no tiene fecha, asumimos hoy para no cobrar doble el primer día
+        const lastPaymentStr = client.lastMembershipPayment || new Date().toISOString().split('T')[0];
         const lastPaymentDate = new Date(lastPaymentStr);
+        lastPaymentDate.setHours(0,0,0,0);
         
-        // Calculamos cuándo debería ser el próximo pago (1 mes después del último)
         const nextPaymentDate = new Date(lastPaymentDate);
         nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 1);
 
-        // Si HOY ya pasó la fecha del próximo pago, hay que cobrar
+        // Solo cobramos si YA PASÓ un mes desde el último pago
         if (today >= nextPaymentDate) {
-          console.log(`Generando cuota automática para: ${client.name}`);
-          
-          const amount = PLAN_PRICES[client.plan] || 0;
-          const description = `Cuota Mensual Automática (${client.plan})`;
+          const amount = PLAN_PRICES[client.plan];
 
-          if (amount > 0) {
-            // 1. Crear transacción de cobro (Ingreso pero resta saldo al cliente)
-            // OJO: Es un "Ingreso" contable para el Gym, pero sale del saldo del cliente.
+          if (amount && amount > 0) {
+            console.log(`Renovando cuota mensual a ${client.name}: $${amount}`);
+
             const newTransaction: Transaction = {
               id: crypto.randomUUID(),
               clientId: client.id,
-              description: description,
+              description: `Renovación Cuota (${client.plan})`,
               amount: amount,
               date: new Date().toISOString().split('T')[0],
               type: TransactionType.INCOME,
-              category: 'Cuota' // Categoría solicitada
+              category: 'Cuota'
             };
             await setDoc(doc(db, 'transactions', newTransaction.id), newTransaction);
 
-            // 2. Actualizar Cliente: Restar saldo y actualizar fecha de último pago
-            // Si saldo es 0, queda en -Amount (Deuda). Si tenía crédito, se descuenta.
             const newBalance = client.balance - amount;
             
             await updateDoc(doc(db, 'clients', client.id), {
               balance: newBalance,
-              lastMembershipPayment: new Date().toISOString().split('T')[0] // Se marca hoy como pagado
+              lastMembershipPayment: new Date().toISOString().split('T')[0]
             });
           }
         }
       });
     };
 
-    // Ejecutamos la revisión con un pequeño delay para no saturar al inicio
-    const timer = setTimeout(() => {
+    const timer = setInterval(() => {
       checkMemberships();
-    }, 2000);
+    }, 10000); // Revisar cada 10 segundos
 
-    return () => clearTimeout(timer);
+    return () => clearInterval(timer);
   }, [clients]); 
-  // Nota: Esto se ejecutará cada vez que 'clients' cambie, pero la lógica de fechas impide cobros dobles.
 
 
   // --- Funciones de Acción ---
 
+  // LÓGICA SEGURA DE CREACIÓN Y COBRO INICIAL
   const addClient = async (client: Client) => {
-    // Al crear cliente, seteamos su 'lastMembershipPayment' a hoy para que no le cobre inmediatamente,
-    // o a su fecha de ingreso si es antigua.
+    const planPrice = PLAN_PRICES[client.plan] || 0;
+    
+    // 1. Calculamos el saldo real DESPUÉS de cobrar la inscripción
+    // Saldo Inicial (lo que paga el cliente) - Costo del Plan
+    const initialBalance = client.balance; 
+    const finalBalance = initialBalance - planPrice;
+
+    // 2. Preparamos el cliente con el saldo YA descontado
     const clientWithPayment = {
       ...client,
-      lastMembershipPayment: client.joinDate // El sistema cobrará al mes siguiente de esta fecha
+      balance: finalBalance, // Guardamos el saldo restante
+      lastMembershipPayment: new Date().toISOString().split('T')[0] // Marcamos hoy como pagado
     };
+    
+    // Guardamos cliente
     await setDoc(doc(db, 'clients', client.id), clientWithPayment);
+
+    // 3. Si el plan tiene costo, registramos el ingreso en la caja (Contabilidad)
+    if (planPrice > 0) {
+      const newTransaction: Transaction = {
+        id: crypto.randomUUID(),
+        clientId: client.id,
+        description: `Pago Inicial - Alta Cliente (${client.plan})`,
+        amount: planPrice,
+        date: new Date().toISOString().split('T')[0],
+        type: TransactionType.INCOME,
+        category: 'Cuota'
+      };
+      await setDoc(doc(db, 'transactions', newTransaction.id), newTransaction);
+    }
   };
 
   const updateClient = async (clientId: string, data: Partial<Client>) => {
@@ -171,7 +187,6 @@ function App() {
     }
   };
 
-  // Función para registrar pagos MANUALES (El cliente viene y paga dinero)
   const registerPayment = async (client: Client, amount: number, description: string) => {
     const newTransaction: Transaction = {
       id: crypto.randomUUID(),
@@ -180,10 +195,11 @@ function App() {
       amount: amount,
       date: new Date().toISOString().split('T')[0],
       type: TransactionType.INCOME,
-      category: 'Cuota' // Asumimos que si paga es cuota, o podría ser 'Abono'
+      category: 'Cuota'
     };
     await setDoc(doc(db, 'transactions', newTransaction.id), newTransaction);
 
+    // Pagar suma al saldo
     const newBalance = client.balance + amount;
     await updateDoc(doc(db, 'clients', client.id), { balance: newBalance });
   };
