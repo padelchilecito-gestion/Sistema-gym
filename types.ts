@@ -24,7 +24,7 @@ export interface Client {
   phone: string;
   joinDate: string;
   status: MembershipStatus;
-  balance: number; // CAMBIO: Positivo = A favor (Crédito), Negativo = Deuda
+  balance: number; // Positivo = A favor, Negativo = Deuda
   plan: string;
   // New fields
   points: number;
@@ -33,7 +33,8 @@ export interface Client {
   lastVisit: string;
   birthDate: string; 
   assignedRoutineId?: string;
-  emergencyContact?: string; // NUEVO CAMPO
+  emergencyContact?: string;
+  lastMembershipPayment?: string; // NUEVO: Fecha del último cobro de cuota
 }
 
 export interface Transaction {
