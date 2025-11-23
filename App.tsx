@@ -21,13 +21,6 @@ import { collection, setDoc, doc, onSnapshot, query, orderBy, deleteDoc, updateD
 type View = 'dashboard' | 'clients' | 'accounting' | 'ai' | 'access' | 'inventory' | 'notifications' | 'gamification' | 'workouts' | 'marketing' | 'settings' | 'predictive';
 type Role = 'admin' | 'client';
 
-// PRECIOS DE TUS PLANES
-const PLAN_PRICES: Record<string, number> = {
-  'Básico': 3000,
-  'Standard': 5000,
-  'Premium': 7000
-};
-
 function App() {
   const [currentView, setCurrentView] = useState<View>('dashboard');
   const [currentRole, setCurrentRole] = useState<Role>('admin');
@@ -41,7 +34,8 @@ function App() {
   const [gymSettings, setGymSettings] = useState<GymSettings>({
     name: 'GymFlow Fitness',
     logoUrl: '',
-    plan: 'Full'
+    plan: 'Full',
+    membershipPrices: { basic: 0, intermediate: 0, full: 0 } // Valores por defecto
   });
 
   // --- Sincronización Firebase ---
@@ -79,95 +73,52 @@ function App() {
 
   useEffect(() => {
     const unsubscribe = onSnapshot(doc(db, 'settings', 'config'), (doc) => {
-      if (doc.exists()) setGymSettings(doc.data() as GymSettings);
+      if (doc.exists()) {
+        // Forzamos el tipo para asegurar que membershipPrices exista
+        const data = doc.data() as GymSettings;
+        setGymSettings({
+          ...data,
+          membershipPrices: data.membershipPrices || { basic: 0, intermediate: 0, full: 0 }
+        });
+      }
     });
     return () => unsubscribe();
   }, []);
 
 
-  // --- PROCESO DE COBRO AUTOMÁTICO (SOLO PARA MESES FUTUROS) ---
-  useEffect(() => {
-    if (clients.length === 0) return;
-
-    const checkMemberships = async () => {
-      const today = new Date();
-      today.setHours(0,0,0,0);
-      
-      clients.forEach(async (client) => {
-        if (client.status !== MembershipStatus.ACTIVE) return;
-
-        // Si no tiene fecha, asumimos hoy para no cobrar doble el primer día
-        const lastPaymentStr = client.lastMembershipPayment || new Date().toISOString().split('T')[0];
-        const lastPaymentDate = new Date(lastPaymentStr);
-        lastPaymentDate.setHours(0,0,0,0);
-        
-        const nextPaymentDate = new Date(lastPaymentDate);
-        nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 1);
-
-        // Solo cobramos si YA PASÓ un mes desde el último pago
-        if (today >= nextPaymentDate) {
-          const amount = PLAN_PRICES[client.plan];
-
-          if (amount && amount > 0) {
-            console.log(`Renovando cuota mensual a ${client.name}: $${amount}`);
-
-            const newTransaction: Transaction = {
-              id: crypto.randomUUID(),
-              clientId: client.id,
-              description: `Renovación Cuota (${client.plan})`,
-              amount: amount,
-              date: new Date().toISOString().split('T')[0],
-              type: TransactionType.INCOME,
-              category: 'Cuota'
-            };
-            await setDoc(doc(db, 'transactions', newTransaction.id), newTransaction);
-
-            const newBalance = client.balance - amount;
-            
-            await updateDoc(doc(db, 'clients', client.id), {
-              balance: newBalance,
-              lastMembershipPayment: new Date().toISOString().split('T')[0]
-            });
-          }
-        }
-      });
-    };
-
-    const timer = setInterval(() => {
-      checkMemberships();
-    }, 10000); // Revisar cada 10 segundos
-
-    return () => clearInterval(timer);
-  }, [clients]); 
+  // --- Helper para obtener precio ---
+  const getPlanPrice = (planCode: string) => {
+    // Mapeo seguro usando los precios configurados
+    const prices: any = gymSettings.membershipPrices || { basic: 0, intermediate: 0, full: 0 };
+    return prices[planCode] || 0;
+  };
 
 
   // --- Funciones de Acción ---
 
-  // LÓGICA SEGURA DE CREACIÓN Y COBRO INICIAL
   const addClient = async (client: Client) => {
-    const planPrice = PLAN_PRICES[client.plan] || 0;
+    // 1. Buscamos el precio configurado en Settings
+    const planPrice = getPlanPrice(client.plan);
     
-    // 1. Calculamos el saldo real DESPUÉS de cobrar la inscripción
-    // Saldo Inicial (lo que paga el cliente) - Costo del Plan
+    // 2. Descontamos el plan del saldo inicial
     const initialBalance = client.balance; 
     const finalBalance = initialBalance - planPrice;
 
-    // 2. Preparamos el cliente con el saldo YA descontado
+    // 3. Preparamos cliente
     const clientWithPayment = {
       ...client,
-      balance: finalBalance, // Guardamos el saldo restante
+      balance: finalBalance, 
       lastMembershipPayment: new Date().toISOString().split('T')[0] // Marcamos hoy como pagado
     };
     
-    // Guardamos cliente
     await setDoc(doc(db, 'clients', client.id), clientWithPayment);
 
-    // 3. Si el plan tiene costo, registramos el ingreso en la caja (Contabilidad)
+    // 4. Si el plan tiene costo, registramos el ingreso en Contabilidad
     if (planPrice > 0) {
       const newTransaction: Transaction = {
         id: crypto.randomUUID(),
         clientId: client.id,
-        description: `Pago Inicial - Alta Cliente (${client.plan})`,
+        description: `Pago Inicial - Alta Cliente (Plan ${client.plan})`,
         amount: planPrice,
         date: new Date().toISOString().split('T')[0],
         type: TransactionType.INCOME,
@@ -199,7 +150,6 @@ function App() {
     };
     await setDoc(doc(db, 'transactions', newTransaction.id), newTransaction);
 
-    // Pagar suma al saldo
     const newBalance = client.balance + amount;
     await updateDoc(doc(db, 'clients', client.id), { balance: newBalance });
   };
