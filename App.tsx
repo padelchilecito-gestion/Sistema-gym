@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { LayoutDashboard, Users, Calculator, Bot, Menu, Dumbbell, ScanLine, Package, Bell, Trophy, HeartPulse, Activity, Lightbulb, Settings as SettingsIcon, Monitor, Smartphone } from 'lucide-react';
 import { Dashboard } from './components/Dashboard';
 import { Clients } from './components/Clients';
@@ -13,68 +13,11 @@ import { MarketingCRM } from './components/MarketingCRM';
 import { Settings } from './components/Settings';
 import { ClientPortal } from './components/ClientPortal';
 import { PredictiveAnalytics } from './components/PredictiveAnalytics';
-import { Client, Transaction, TransactionType, MembershipStatus, Product, CheckIn, GymSettings } from './types';
+import { Client, Transaction, Product, CheckIn, GymSettings } from './types';
 
-// Helpers for dates
-const daysAgo = (days: number) => {
-  const d = new Date();
-  d.setDate(d.getDate() - days);
-  return d.toISOString();
-};
-
-const currentYearMonth = (day: number) => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-};
-
-// Mock Data Initialization
-const initialClients: Client[] = [
-  { 
-    id: '1', name: 'Juan Pérez', email: 'juan@example.com', phone: '5550101', joinDate: '2023-01-15', status: MembershipStatus.ACTIVE, balance: 0, plan: 'Premium',
-    points: 1250, level: 'Gold', streak: 15, lastVisit: daysAgo(1), birthDate: '1990-05-12'
-  },
-  { 
-    id: '2', name: 'María Garcia', email: 'maria@example.com', phone: '5550102', joinDate: '2023-03-10', status: MembershipStatus.ACTIVE, balance: 50, plan: 'Standard',
-    points: 850, level: 'Silver', streak: 3, lastVisit: daysAgo(3), birthDate: currentYearMonth(15) 
-  },
-  { 
-    id: '3', name: 'Carlos Rodriguez', email: 'carlos@example.com', phone: '5550103', joinDate: '2023-05-20', status: MembershipStatus.INACTIVE, balance: 0, plan: 'Básico',
-    points: 120, level: 'Bronze', streak: 0, lastVisit: daysAgo(45), birthDate: '1985-11-30' 
-  },
-  { 
-    id: '4', name: 'Ana López', email: 'ana@example.com', phone: '5550104', joinDate: '2023-06-01', status: MembershipStatus.ACTIVE, balance: 0, plan: 'Standard',
-    points: 2100, level: 'Gold', streak: 45, lastVisit: daysAgo(20), birthDate: '1995-02-14' 
-  },
-  { 
-    id: '5', name: 'Luis Fernández', email: 'luis@example.com', phone: '5550105', joinDate: '2023-02-14', status: MembershipStatus.ACTIVE, balance: 100, plan: 'Premium',
-    points: 450, level: 'Bronze', streak: 1, lastVisit: daysAgo(0), birthDate: '1988-08-22'
-  },
-  { 
-    id: '6', name: 'Sofía Vergara', email: 'sofia@example.com', phone: '5550106', joinDate: '2023-07-10', status: MembershipStatus.ACTIVE, balance: 0, plan: 'Premium',
-    points: 980, level: 'Silver', streak: 8, lastVisit: daysAgo(2), birthDate: currentYearMonth(28) 
-  },
-];
-
-const initialTransactions: Transaction[] = [
-  { id: '101', description: 'Pago Mensualidad - Juan Pérez', amount: 50, date: '2023-10-01', type: TransactionType.INCOME, category: 'Mensualidad', clientId: '1' },
-  { id: '102', description: 'Alquiler Local', amount: 1200, date: '2023-10-01', type: TransactionType.EXPENSE, category: 'Alquiler' },
-  { id: '103', description: 'Venta Proteína', amount: 45, date: '2023-10-02', type: TransactionType.INCOME, category: 'Productos' },
-  { id: '104', description: 'Reparación Caminadora', amount: 200, date: '2023-10-05', type: TransactionType.EXPENSE, category: 'Mantenimiento' },
-  { id: '105', description: 'Pago Mensualidad - María Garcia', amount: 30, date: '2023-10-10', type: TransactionType.INCOME, category: 'Mensualidad', clientId: '2' },
-  { id: '106', description: 'Pago Luz', amount: 150, date: '2023-10-15', type: TransactionType.EXPENSE, category: 'Servicios' },
-  { id: '107', description: 'Venta Agua x10', amount: 20, date: '2023-10-16', type: TransactionType.INCOME, category: 'Productos' },
-];
-
-const initialProducts: Product[] = [
-  { id: 'p1', name: 'Proteína Whey 1kg', price: 45.00, stock: 12, category: 'Suplementos', sku: 'PRO-001' },
-  { id: 'p2', name: 'Agua Mineral 500ml', price: 1.50, stock: 45, category: 'Bebidas', sku: 'H2O-500' },
-  { id: 'p3', name: 'Toalla GymFlow', price: 10.00, stock: 3, category: 'Accesorios', sku: 'TOW-001' },
-];
-
-const initialCheckIns: CheckIn[] = [
-  { id: 'c1', clientId: '1', clientName: 'Juan Pérez', timestamp: new Date(new Date().getTime() - 45 * 60000).toISOString() }, 
-  { id: 'c2', clientId: '5', clientName: 'Luis Fernández', timestamp: new Date(new Date().getTime() - 15 * 60000).toISOString() }, 
-];
+// Importaciones de Firebase
+import { db } from './firebase';
+import { collection, setDoc, doc, onSnapshot, query, orderBy, Timestamp } from 'firebase/firestore';
 
 type View = 'dashboard' | 'clients' | 'accounting' | 'ai' | 'access' | 'inventory' | 'notifications' | 'gamification' | 'workouts' | 'marketing' | 'settings' | 'predictive';
 type Role = 'admin' | 'client';
@@ -85,39 +28,102 @@ function App() {
   const [currentRole, setCurrentRole] = useState<Role>('admin');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
-  // Feature State
-  const [clients, setClients] = useState<Client[]>(initialClients);
-  const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
-  const [products, setProducts] = useState<Product[]>(initialProducts);
-  const [checkIns, setCheckIns] = useState<CheckIn[]>(initialCheckIns);
+  // Feature State (Inicializado vacío, se llenará desde Firebase)
+  const [clients, setClients] = useState<Client[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [checkIns, setCheckIns] = useState<CheckIn[]>([]);
   
-  // Settings State (SaaS Plan)
+  // Settings State
   const [gymSettings, setGymSettings] = useState<GymSettings>({
     name: 'GymFlow Fitness',
     logoUrl: '',
-    plan: 'Full' // Default to full for demo
+    plan: 'Full'
   });
 
-  const addClient = (client: Client) => {
-    setClients([...clients, client]);
+  // --- CONEXIÓN A FIREBASE (Hooks) ---
+
+  // 1. Sincronizar Clientes
+  useEffect(() => {
+    const q = query(collection(db, 'clients'), orderBy('name'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const clientsData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Client));
+      setClients(clientsData);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // 2. Sincronizar Transacciones
+  useEffect(() => {
+    const q = query(collection(db, 'transactions'), orderBy('date', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const transData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Transaction));
+      setTransactions(transData);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // 3. Sincronizar Productos
+  useEffect(() => {
+    const q = query(collection(db, 'products'), orderBy('name'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const prodData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Product));
+      setProducts(prodData);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // 4. Sincronizar CheckIns
+  useEffect(() => {
+    // Ordenamos por timestamp descendente (lo más reciente primero)
+    const q = query(collection(db, 'checkins'), orderBy('timestamp', 'desc')); 
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const checkData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as CheckIn));
+      setCheckIns(checkData);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // 5. Sincronizar Configuración
+  useEffect(() => {
+    const unsubscribe = onSnapshot(doc(db, 'settings', 'config'), (doc) => {
+      if (doc.exists()) {
+        setGymSettings(doc.data() as GymSettings);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+
+  // --- FUNCIONES DE ACCIÓN (Escriben en Firebase) ---
+
+  const addClient = async (client: Client) => {
+    // Usamos setDoc para mantener el ID que generó el frontend (crypto.randomUUID)
+    await setDoc(doc(db, 'clients', client.id), client);
   };
 
-  const addTransaction = (transaction: Transaction) => {
-    setTransactions([...transactions, transaction]);
+  const addTransaction = async (transaction: Transaction) => {
+    await setDoc(doc(db, 'transactions', transaction.id), transaction);
   };
 
-  const addProduct = (product: Product) => {
-    setProducts([...products, product]);
+  const addProduct = async (product: Product) => {
+    await setDoc(doc(db, 'products', product.id), product);
   };
 
-  const handleCheckIn = (client: Client) => {
+  const handleCheckIn = async (client: Client) => {
     const newCheckIn: CheckIn = {
       id: crypto.randomUUID(),
       clientId: client.id,
       clientName: client.name,
       timestamp: new Date().toISOString()
     };
-    setCheckIns([newCheckIn, ...checkIns]);
+    await setDoc(doc(db, 'checkins', newCheckIn.id), newCheckIn);
+  };
+
+  const handleUpdateSettings = async (settings: GymSettings) => {
+    await setDoc(doc(db, 'settings', 'config'), settings);
+    // Actualizamos estado local optimista
+    setGymSettings(settings); 
   };
 
   // Plan Capabilities Check
@@ -132,7 +138,6 @@ function App() {
   if (currentRole === 'client') {
     return (
       <>
-        {/* Role Switcher Overlay for Demo Purpose */}
         <div className="fixed top-4 right-4 z-50">
            <button 
               onClick={() => setCurrentRole('admin')}
@@ -142,7 +147,11 @@ function App() {
            </button>
         </div>
         <ClientPortal 
-          client={clients[0]} 
+          client={clients[0] || { // Fallback si no hay clientes aun
+             id: 'demo', name: 'Usuario Demo', email: 'demo@gym.com', phone: '', 
+             joinDate: '', status: 'Activo', balance: 0, plan: 'Básico', 
+             points: 0, level: 'Bronze', streak: 0, lastVisit: '', birthDate: '' 
+          }} 
           settings={gymSettings} 
           onLogout={() => setCurrentRole('admin')} 
         />
@@ -154,7 +163,6 @@ function App() {
   const debtorsCount = clients.filter(c => c.balance > 0).length;
 
   const NavItem = ({ view, label, icon: Icon, badge, requiredPlan }: { view: View, label: string, icon: any, badge?: number, requiredPlan?: 'basic' | 'standard' | 'full' }) => {
-    // Don't render if plan doesn't support it
     if (requiredPlan && !hasFeature(requiredPlan)) return null;
 
     return (
@@ -182,7 +190,6 @@ function App() {
   return (
     <div className="min-h-screen bg-slate-50 flex font-sans">
       
-      {/* Role Switcher for Demo */}
       <div className="fixed top-4 right-4 z-50 hidden lg:block">
            <button 
               onClick={() => setCurrentRole('client')}
@@ -192,7 +199,6 @@ function App() {
            </button>
       </div>
 
-      {/* Mobile Sidebar Overlay */}
       {isSidebarOpen && (
         <div 
           className="fixed inset-0 bg-black/50 z-40 lg:hidden"
@@ -219,14 +225,12 @@ function App() {
             <NavItem view="clients" label="Clientes" icon={Users} requiredPlan="basic" />
             <NavItem view="accounting" label="Contabilidad" icon={Calculator} requiredPlan="basic" />
             
-            {/* Standard Features */}
             {hasFeature('standard') && (
               <>
                 <NavItem view="access" label="Control Acceso" icon={ScanLine} requiredPlan="standard" />
               </>
             )}
 
-            {/* Full Features */}
             {hasFeature('full') && (
               <>
                  <NavItem view="inventory" label="Inventario" icon={Package} requiredPlan="full" />
@@ -302,7 +306,7 @@ function App() {
             {currentView === 'workouts' && <Workouts clients={clients} />}
             {currentView === 'marketing' && <MarketingCRM clients={clients} />}
             {currentView === 'ai' && <AIAssistant transactions={transactions} clients={clients} />}
-            {currentView === 'settings' && <Settings settings={gymSettings} onUpdateSettings={setGymSettings} />}
+            {currentView === 'settings' && <Settings settings={gymSettings} onUpdateSettings={handleUpdateSettings} />}
             {currentView === 'predictive' && <PredictiveAnalytics transactions={transactions} checkIns={checkIns} />}
           </div>
         </div>
