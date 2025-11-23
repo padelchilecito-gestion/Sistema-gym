@@ -1,7 +1,7 @@
 import path from 'path';
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
-import { VitePWA } from 'vite-plugin-pwa';
+import { VitePWA } from 'vite-plugin-pwa'; // <--- AGREGADO
 
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
@@ -12,6 +12,7 @@ export default defineConfig(({ mode }) => {
       },
       plugins: [
         react(),
+        // INICIO BLOQUE PWA (AGREGADO SIN BORRAR LO TUYO)
         VitePWA({ 
           registerType: 'autoUpdate',
           includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
@@ -36,7 +37,9 @@ export default defineConfig(({ mode }) => {
             ]
           }
         })
+        // FIN BLOQUE PWA
       ],
+      // TUS CONFIGURACIONES ORIGINALES (MANTENIDAS)
       define: {
         'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
         'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
