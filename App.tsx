@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, Users, Calculator, Bot, Menu, Dumbbell, ScanLine, Package, Bell, Trophy, HeartPulse, Activity, Lightbulb, Settings as SettingsIcon, Monitor, Smartphone } from 'lucide-react';
+import { LayoutDashboard, Users, Calculator, Bot, Menu, Dumbbell, ScanLine, Package, Bell, Trophy, HeartPulse, Activity, Lightbulb, Settings as SettingsIcon, LogOut, Smartphone } from 'lucide-react';
 import { Dashboard } from './components/Dashboard';
 import { Clients } from './components/Clients';
 import { Accounting } from './components/Accounting';
@@ -13,13 +13,13 @@ import { MarketingCRM } from './components/MarketingCRM';
 import { Settings } from './components/Settings';
 import { ClientPortal } from './components/ClientPortal';
 import { PredictiveAnalytics } from './components/PredictiveAnalytics';
-import { Client, Transaction, Product, CheckIn, GymSettings, MembershipStatus, TransactionType, Routine } from './types';
+import { Login } from './components/Login'; // IMPORTAR LOGIN
+import { Client, Transaction, Product, CheckIn, GymSettings, MembershipStatus, TransactionType, Routine, UserRole } from './types';
 
 import { db } from './firebase';
 import { collection, setDoc, doc, onSnapshot, query, orderBy, deleteDoc, updateDoc } from 'firebase/firestore';
 
 type View = 'dashboard' | 'clients' | 'accounting' | 'ai' | 'access' | 'inventory' | 'notifications' | 'gamification' | 'workouts' | 'marketing' | 'settings' | 'predictive';
-type Role = 'admin' | 'client';
 
 const PLAN_PRICES: Record<string, number> = {
   'Básico': 3000,
@@ -28,8 +28,11 @@ const PLAN_PRICES: Record<string, number> = {
 };
 
 function App() {
+  // ESTADO DE SESIÓN
+  const [userRole, setUserRole] = useState<UserRole | null>(null);
+  const [currentUser, setCurrentUser] = useState<Client | undefined>(undefined);
+
   const [currentView, setCurrentView] = useState<View>('dashboard');
-  const [currentRole, setCurrentRole] = useState<Role>('admin');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
   const [clients, setClients] = useState<Client[]>([]);
@@ -47,66 +50,34 @@ function App() {
 
   // --- Sincronización Firebase ---
   useEffect(() => {
-    const q = query(collection(db, 'clients'), orderBy('name'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setClients(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Client)));
-    });
-    return () => unsubscribe();
-  }, []);
+    if (!userRole) return; // Solo sincronizar si hay usuario logueado
 
-  useEffect(() => {
-    const q = query(collection(db, 'transactions'), orderBy('date', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setTransactions(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Transaction)));
-    });
-    return () => unsubscribe();
-  }, []);
+    const qClients = query(collection(db, 'clients'), orderBy('name'));
+    const unsubClients = onSnapshot(qClients, (s) => setClients(s.docs.map(d => ({ ...d.data(), id: d.id } as Client))));
 
-  useEffect(() => {
-    const q = query(collection(db, 'products'), orderBy('name'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setProducts(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Product)));
-    });
-    return () => unsubscribe();
-  }, []);
+    const qTrans = query(collection(db, 'transactions'), orderBy('date', 'desc'));
+    const unsubTrans = onSnapshot(qTrans, (s) => setTransactions(s.docs.map(d => ({ ...d.data(), id: d.id } as Transaction))));
 
-  useEffect(() => {
-    const q = query(collection(db, 'checkins'), orderBy('timestamp', 'desc')); 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setCheckIns(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as CheckIn)));
-    });
-    return () => unsubscribe();
-  }, []);
+    const qProds = query(collection(db, 'products'), orderBy('name'));
+    const unsubProds = onSnapshot(qProds, (s) => setProducts(s.docs.map(d => ({ ...d.data(), id: d.id } as Product))));
 
-  useEffect(() => {
-    const q = query(collection(db, 'routines'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      if (snapshot.empty) {
-         const initial: Routine[] = [
-            { id: 'r1', name: 'Hipertrofia Total', difficulty: 'Avanzado', description: '5 días a la semana, enfoque en ganancia muscular.', exercisesCount: 24 },
-            { id: 'r2', name: 'Pérdida de Peso', difficulty: 'Intermedio', description: 'Circuito HIIT de 30 minutos para quemar grasa.', exercisesCount: 8 },
-            { id: 'r3', name: 'Iniciación', difficulty: 'Principiante', description: 'Adaptación anatómica para nuevos miembros.', exercisesCount: 12 },
-         ];
-         setRoutines(initial);
-      } else {
-         setRoutines(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Routine)));
-      }
-    });
-    return () => unsubscribe();
-  }, []);
+    const qCheck = query(collection(db, 'checkins'), orderBy('timestamp', 'desc')); 
+    const unsubCheck = onSnapshot(qCheck, (s) => setCheckIns(s.docs.map(d => ({ ...d.data(), id: d.id } as CheckIn))));
 
-  useEffect(() => {
-    const unsubscribe = onSnapshot(doc(db, 'settings', 'config'), (doc) => {
+    const qRout = query(collection(db, 'routines'));
+    const unsubRout = onSnapshot(qRout, (s) => setRoutines(s.docs.map(d => ({ ...d.data(), id: d.id } as Routine))));
+
+    const unsubSettings = onSnapshot(doc(db, 'settings', 'config'), (doc) => {
       if (doc.exists()) {
         const data = doc.data() as GymSettings;
-        setGymSettings({
-          ...data,
-          membershipPrices: data.membershipPrices || { basic: 0, intermediate: 0, full: 0 }
-        });
+        setGymSettings({ ...data, membershipPrices: data.membershipPrices || { basic: 0, intermediate: 0, full: 0 } });
       }
     });
-    return () => unsubscribe();
-  }, []);
+
+    return () => {
+      unsubClients(); unsubTrans(); unsubProds(); unsubCheck(); unsubRout(); unsubSettings();
+    };
+  }, [userRole]);
 
   const getPlanPrice = (planCode: string) => {
     const prices: any = gymSettings.membershipPrices || { basic: 0, intermediate: 0, full: 0 };
@@ -114,134 +85,84 @@ function App() {
   };
 
   // --- Funciones de Acción ---
-
   const addClient = async (client: Client) => {
     const planPrice = getPlanPrice(client.plan);
     const initialBalance = client.balance; 
     const finalBalance = initialBalance - planPrice;
-
-    const clientWithPayment = {
-      ...client,
-      balance: finalBalance, 
-      lastMembershipPayment: new Date().toISOString().split('T')[0]
-    };
-    
+    const clientWithPayment = { ...client, balance: finalBalance, lastMembershipPayment: new Date().toISOString().split('T')[0] };
     await setDoc(doc(db, 'clients', client.id), clientWithPayment);
-
     if (planPrice > 0) {
       const newTransaction: Transaction = {
-        id: crypto.randomUUID(),
-        clientId: client.id,
-        description: `Pago Inicial - Alta Cliente (Plan ${client.plan})`,
-        amount: planPrice,
-        date: new Date().toISOString().split('T')[0],
-        type: TransactionType.INCOME,
-        category: 'Cuota'
+        id: crypto.randomUUID(), clientId: client.id, description: `Pago Inicial - Alta Cliente (Plan ${client.plan})`, amount: planPrice, date: new Date().toISOString().split('T')[0], type: TransactionType.INCOME, category: 'Cuota'
       };
       await setDoc(doc(db, 'transactions', newTransaction.id), newTransaction);
     }
   };
 
-  const updateClient = async (clientId: string, data: Partial<Client>) => {
-    await updateDoc(doc(db, 'clients', clientId), data);
-  };
-
-  const deleteClient = async (clientId: string) => {
-    if(window.confirm('¿Estás seguro de borrar este cliente? Esta acción no se puede deshacer.')) {
-      await deleteDoc(doc(db, 'clients', clientId));
-    }
-  };
-
+  const updateClient = async (clientId: string, data: Partial<Client>) => await updateDoc(doc(db, 'clients', clientId), data);
+  const deleteClient = async (clientId: string) => { if(window.confirm('¿Seguro?')) await deleteDoc(doc(db, 'clients', clientId)); };
   const registerPayment = async (client: Client, amount: number, description: string) => {
-    const newTransaction: Transaction = {
-      id: crypto.randomUUID(),
-      clientId: client.id,
-      description: description,
-      amount: amount,
-      date: new Date().toISOString().split('T')[0],
-      type: TransactionType.INCOME,
-      category: 'Cuota'
-    };
+    const newTransaction: Transaction = { id: crypto.randomUUID(), clientId: client.id, description: description, amount: amount, date: new Date().toISOString().split('T')[0], type: TransactionType.INCOME, category: 'Cuota' };
     await setDoc(doc(db, 'transactions', newTransaction.id), newTransaction);
-
     const newBalance = client.balance + amount;
     await updateDoc(doc(db, 'clients', client.id), { balance: newBalance });
   };
-
-  const addTransaction = async (transaction: Transaction) => {
-    await setDoc(doc(db, 'transactions', transaction.id), transaction);
-  };
-
-  const updateTransaction = async (id: string, data: Partial<Transaction>) => {
-    await updateDoc(doc(db, 'transactions', id), data);
-  };
-
-  const deleteTransaction = async (id: string) => {
-    if(window.confirm('¿Borrar este movimiento contable?')) {
-      await deleteDoc(doc(db, 'transactions', id));
-    }
-  };
-
-  const addProduct = async (product: Product) => {
-    await setDoc(doc(db, 'products', product.id), product);
-  };
-
+  const addTransaction = async (t: Transaction) => await setDoc(doc(db, 'transactions', t.id), t);
+  const updateTransaction = async (id: string, data: Partial<Transaction>) => await updateDoc(doc(db, 'transactions', id), data);
+  const deleteTransaction = async (id: string) => { if(window.confirm('¿Seguro?')) await deleteDoc(doc(db, 'transactions', id)); };
+  const addProduct = async (p: Product) => await setDoc(doc(db, 'products', p.id), p);
   const handleCheckIn = async (client: Client) => {
-    const newCheckIn: CheckIn = {
-      id: crypto.randomUUID(),
-      clientId: client.id,
-      clientName: client.name,
-      timestamp: new Date().toISOString(),
-      checkoutTimestamp: null 
-    };
+    const newCheckIn: CheckIn = { id: crypto.randomUUID(), clientId: client.id, clientName: client.name, timestamp: new Date().toISOString(), checkoutTimestamp: null };
     await setDoc(doc(db, 'checkins', newCheckIn.id), newCheckIn);
   };
+  const handleCheckOut = async (checkInId: string) => await updateDoc(doc(db, 'checkins', checkInId), { checkoutTimestamp: new Date().toISOString() });
+  const addRoutine = async (r: Routine) => await setDoc(doc(db, 'routines', r.id), r);
+  const handleUpdateSettings = async (s: GymSettings) => { await setDoc(doc(db, 'settings', 'config'), s); setGymSettings(s); };
 
-  const handleCheckOut = async (checkInId: string) => {
-    await updateDoc(doc(db, 'checkins', checkInId), {
-      checkoutTimestamp: new Date().toISOString()
-    });
+  // --- CONTROL DE ACCESO POR ROL ---
+  const hasAccess = (view: View) => {
+    if (userRole === 'admin') return true;
+    if (userRole === 'instructor') {
+      // El instructor solo ve esto:
+      return ['dashboard', 'clients', 'access', 'workouts'].includes(view);
+    }
+    return false; // Cliente no usa estas vistas
   };
 
-  const addRoutine = async (routine: Routine) => {
-    await setDoc(doc(db, 'routines', routine.id), routine);
+  const handleLogout = () => {
+    setUserRole(null);
+    setCurrentUser(undefined);
+    setCurrentView('dashboard');
   };
 
-  const handleUpdateSettings = async (settings: GymSettings) => {
-    await setDoc(doc(db, 'settings', 'config'), settings);
-    setGymSettings(settings); 
-  };
+  // --- RENDERIZADO ---
 
-  const hasFeature = (feature: 'basic' | 'standard' | 'full') => {
-    if (gymSettings.plan === 'Full') return true;
-    if (gymSettings.plan === 'Standard' && feature !== 'full') return true;
-    if (gymSettings.plan === 'Basic' && feature === 'basic') return true;
-    return false;
-  };
+  // 1. Si no hay usuario, mostramos LOGIN
+  if (!userRole) {
+    return <Login onLogin={(role, data) => {
+      setUserRole(role);
+      if(data) setCurrentUser(data);
+    }} />;
+  }
 
-  if (currentRole === 'client') {
+  // 2. Si es CLIENTE, mostramos su PORTAL exclusivo
+  if (userRole === 'client' && currentUser) {
     return (
-      <>
-        <div className="fixed top-4 right-4 z-50">
-           <button onClick={() => setCurrentRole('admin')} className="bg-slate-800 text-white px-4 py-2 rounded-full text-xs font-bold shadow-lg flex items-center gap-2 hover:bg-slate-700">
-             <Monitor size={14} /> Cambiar a Admin (PC)
-           </button>
-        </div>
-        <ClientPortal 
-          client={clients[0] || { id: 'demo', name: 'Usuario Demo', email: 'demo@gym.com', phone: '', joinDate: '', status: MembershipStatus.ACTIVE, balance: 0, plan: 'basic', points: 0, level: 'Bronze', streak: 0, lastVisit: '', birthDate: '' }} 
-          settings={gymSettings} 
-          checkIns={checkIns} 
-          routines={routines} 
-          onLogout={() => setCurrentRole('admin')} 
-        />
-      </>
+      <ClientPortal 
+        client={currentUser} 
+        settings={gymSettings} 
+        checkIns={checkIns} 
+        routines={routines} 
+        onLogout={handleLogout} 
+      />
     );
   }
 
+  // 3. Si es ADMIN o INSTRUCTOR, mostramos el Panel de Gestión
   const debtorsCount = clients.filter(c => c.balance < 0).length;
 
-  const NavItem = ({ view, label, icon: Icon, badge, requiredPlan }: { view: View, label: string, icon: any, badge?: number, requiredPlan?: 'basic' | 'standard' | 'full' }) => {
-    if (requiredPlan && !hasFeature(requiredPlan)) return null;
+  const NavItem = ({ view, label, icon: Icon, badge }: { view: View, label: string, icon: any, badge?: number }) => {
+    if (!hasAccess(view)) return null; // Ocultar si no tiene permiso
     return (
       <button onClick={() => { setCurrentView(view); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-colors font-medium relative ${currentView === view ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'}`}>
         <Icon size={18} /> <span className="text-sm">{label}</span>
@@ -252,12 +173,6 @@ function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex font-sans">
-      <div className="fixed top-4 right-4 z-50 hidden lg:block">
-           <button onClick={() => setCurrentRole('client')} className="bg-indigo-600 text-white px-4 py-2 rounded-full text-xs font-bold shadow-lg flex items-center gap-2 hover:bg-indigo-500 transition-all transform hover:scale-105">
-             <Smartphone size={14} /> Ver App Cliente
-           </button>
-      </div>
-
       {isSidebarOpen && <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setIsSidebarOpen(false)} />}
 
       <aside className={`fixed lg:static inset-y-0 left-0 z-50 w-64 bg-white border-r border-slate-200 transform transition-transform duration-200 ease-in-out lg:transform-none ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} flex flex-col`}>
@@ -266,51 +181,46 @@ function App() {
             <div className="bg-blue-600 p-2 rounded-lg text-white shadow-lg shadow-blue-200 overflow-hidden">
               {gymSettings.logoUrl ? <img src={gymSettings.logoUrl} className="w-5 h-5 object-cover" alt="" /> : <Dumbbell size={20} strokeWidth={3} />}
             </div>
-            <div><h1 className="text-base font-bold text-slate-900 tracking-tight leading-none truncate max-w-[140px]">{gymSettings.name}</h1><span className="text-[10px] text-slate-400 uppercase font-bold">{gymSettings.plan} Plan</span></div>
+            <div><h1 className="text-base font-bold text-slate-900 tracking-tight leading-none truncate max-w-[140px]">{gymSettings.name}</h1><span className="text-[10px] text-slate-400 uppercase font-bold">{userRole === 'admin' ? 'Administrador' : 'Instructor'}</span></div>
           </div>
           <nav className="space-y-1 flex-1 overflow-y-auto max-h-[calc(100vh-180px)] pr-2 custom-scrollbar">
             <div className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 mt-1">Gestión</div>
-            <NavItem view="dashboard" label="Dashboard" icon={LayoutDashboard} requiredPlan="basic" />
-            <NavItem view="clients" label="Clientes" icon={Users} requiredPlan="basic" />
-            <NavItem view="accounting" label="Contabilidad" icon={Calculator} requiredPlan="basic" />
+            <NavItem view="dashboard" label="Dashboard" icon={LayoutDashboard} />
+            <NavItem view="clients" label="Clientes" icon={Users} />
+            <NavItem view="accounting" label="Contabilidad" icon={Calculator} />
+            <NavItem view="access" label="Control Acceso" icon={ScanLine} />
+            <NavItem view="inventory" label="Inventario" icon={Package} />
             
-            {/* CORRECCIÓN: Ahora solo usamos NavItem, nunca renderizamos el componente aquí */}
-            {hasFeature('standard') && <NavItem view="access" label="Control Acceso" icon={ScanLine} requiredPlan="standard" />}
-            
-            {hasFeature('full') && <NavItem view="inventory" label="Inventario" icon={Package} requiredPlan="full" />}
-            
-            {/* CORRECCIÓN: Igual aquí, solo NavItem */}
-            {hasFeature('full') && (
-              <div className="pt-4 mt-4 border-t border-slate-100">
+            <div className="pt-4 mt-4 border-t border-slate-100">
                 <div className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Fidelización</div>
-                <NavItem view="gamification" label="Gamificación" icon={Trophy} requiredPlan="full" />
-                <NavItem view="workouts" label="Entrenamientos" icon={Activity} requiredPlan="full" />
-              </div>
-            )}
+                <NavItem view="gamification" label="Gamificación" icon={Trophy} />
+                <NavItem view="workouts" label="Entrenamientos" icon={Activity} />
+            </div>
             
             <div className="pt-4 mt-4 border-t border-slate-100">
                <div className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Marketing</div>
-               <NavItem view="notifications" label="Cobranzas" icon={Bell} badge={debtorsCount} requiredPlan="basic" />
-               <NavItem view="marketing" label="CRM & Rescate" icon={HeartPulse} requiredPlan="standard" />
+               <NavItem view="notifications" label="Cobranzas" icon={Bell} badge={debtorsCount} />
+               <NavItem view="marketing" label="CRM & Rescate" icon={HeartPulse} />
             </div>
-            {hasFeature('full') && (
-              <div className="pt-4 mt-4 border-t border-slate-100">
-                <div className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Inteligencia</div>
-                <NavItem view="ai" label="Asistente AI" icon={Bot} requiredPlan="full" />
-                <NavItem view="predictive" label="IA Predictiva" icon={Lightbulb} requiredPlan="full" />
-              </div>
-            )}
             <div className="pt-4 mt-4 border-t border-slate-100">
                <div className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Sistema</div>
+               <NavItem view="ai" label="Asistente AI" icon={Bot} />
+               <NavItem view="predictive" label="IA Predictiva" icon={Lightbulb} />
                <NavItem view="settings" label="Configuración" icon={SettingsIcon} />
             </div>
           </nav>
         </div>
         <div className="mt-auto p-6 border-t border-slate-100">
-          <div className="flex items-center gap-3 px-2">
-             <div className="w-8 h-8 rounded-full bg-slate-900 flex items-center justify-center font-bold text-white text-xs">AD</div>
-             <div className="text-sm"><p className="font-medium text-slate-900">Admin</p><p className="text-slate-500 text-xs">admin@gymflow.com</p></div>
-          </div>
+          <button onClick={handleLogout} className="flex items-center gap-3 px-2 w-full text-left hover:bg-slate-50 p-2 rounded-lg transition-colors">
+             <div className="w-8 h-8 rounded-full bg-slate-900 flex items-center justify-center font-bold text-white text-xs">
+               {userRole === 'admin' ? 'AD' : 'IN'}
+             </div>
+             <div className="text-sm flex-1">
+               <p className="font-medium text-slate-900 capitalize">{userRole}</p>
+               <p className="text-slate-500 text-xs">Cerrar Sesión</p>
+             </div>
+             <LogOut size={16} className="text-slate-400" />
+          </button>
         </div>
       </aside>
 
@@ -328,10 +238,7 @@ function App() {
              {currentView === 'clients' && <Clients clients={clients} addClient={addClient} updateClient={updateClient} deleteClient={deleteClient} registerPayment={registerPayment} />}
              {currentView === 'accounting' && <Accounting transactions={transactions} addTransaction={addTransaction} updateTransaction={updateTransaction} deleteTransaction={deleteTransaction} clients={clients} />}
              {currentView === 'inventory' && <Inventory products={products} addProduct={addProduct} />}
-             
-             {/* El contenido de AccessControl se renderiza AQUÍ, no en el sidebar */}
              {currentView === 'access' && <AccessControl checkIns={checkIns} clients={clients} onCheckIn={handleCheckIn} onCheckOut={handleCheckOut} />}
-             
              {currentView === 'notifications' && <Notifications clients={clients} />}
              {currentView === 'gamification' && <Gamification clients={clients} />}
              {currentView === 'workouts' && <Workouts clients={clients} routines={routines} addRoutine={addRoutine} updateClient={updateClient} />}
