@@ -13,11 +13,12 @@ import { MarketingCRM } from './components/MarketingCRM';
 import { Settings } from './components/Settings';
 import { ClientPortal } from './components/ClientPortal';
 import { PredictiveAnalytics } from './components/PredictiveAnalytics';
-import { Client, Transaction, Product, CheckIn, GymSettings } from './types';
+// CORRECCIÓN 1: Agregamos MembershipStatus a la importación
+import { Client, Transaction, Product, CheckIn, GymSettings, MembershipStatus } from './types';
 
 // Importaciones de Firebase
 import { db } from './firebase';
-import { collection, setDoc, doc, onSnapshot, query, orderBy, Timestamp } from 'firebase/firestore';
+import { collection, setDoc, doc, onSnapshot, query, orderBy } from 'firebase/firestore';
 
 type View = 'dashboard' | 'clients' | 'accounting' | 'ai' | 'access' | 'inventory' | 'notifications' | 'gamification' | 'workouts' | 'marketing' | 'settings' | 'predictive';
 type Role = 'admin' | 'client';
@@ -28,7 +29,7 @@ function App() {
   const [currentRole, setCurrentRole] = useState<Role>('admin');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
-  // Feature State (Inicializado vacío, se llenará desde Firebase)
+  // Feature State
   const [clients, setClients] = useState<Client[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -75,7 +76,6 @@ function App() {
 
   // 4. Sincronizar CheckIns
   useEffect(() => {
-    // Ordenamos por timestamp descendente (lo más reciente primero)
     const q = query(collection(db, 'checkins'), orderBy('timestamp', 'desc')); 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const checkData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as CheckIn));
@@ -95,10 +95,9 @@ function App() {
   }, []);
 
 
-  // --- FUNCIONES DE ACCIÓN (Escriben en Firebase) ---
+  // --- FUNCIONES DE ACCIÓN ---
 
   const addClient = async (client: Client) => {
-    // Usamos setDoc para mantener el ID que generó el frontend (crypto.randomUUID)
     await setDoc(doc(db, 'clients', client.id), client);
   };
 
@@ -122,11 +121,9 @@ function App() {
 
   const handleUpdateSettings = async (settings: GymSettings) => {
     await setDoc(doc(db, 'settings', 'config'), settings);
-    // Actualizamos estado local optimista
     setGymSettings(settings); 
   };
 
-  // Plan Capabilities Check
   const hasFeature = (feature: 'basic' | 'standard' | 'full') => {
     if (gymSettings.plan === 'Full') return true;
     if (gymSettings.plan === 'Standard' && feature !== 'full') return true;
@@ -147,10 +144,21 @@ function App() {
            </button>
         </div>
         <ClientPortal 
-          client={clients[0] || { // Fallback si no hay clientes aun
-             id: 'demo', name: 'Usuario Demo', email: 'demo@gym.com', phone: '', 
-             joinDate: '', status: 'Activo', balance: 0, plan: 'Básico', 
-             points: 0, level: 'Bronze', streak: 0, lastVisit: '', birthDate: '' 
+          client={clients[0] || { 
+             id: 'demo', 
+             name: 'Usuario Demo', 
+             email: 'demo@gym.com', 
+             phone: '', 
+             joinDate: '', 
+             // CORRECCIÓN 2: Usamos el Enum en lugar del texto plano
+             status: MembershipStatus.ACTIVE, 
+             balance: 0, 
+             plan: 'Básico', 
+             points: 0, 
+             level: 'Bronze', 
+             streak: 0, 
+             lastVisit: '', 
+             birthDate: '' 
           }} 
           settings={gymSettings} 
           onLogout={() => setCurrentRole('admin')} 
