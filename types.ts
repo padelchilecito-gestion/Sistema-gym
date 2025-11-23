@@ -24,15 +24,16 @@ export interface Client {
   phone: string;
   joinDate: string;
   status: MembershipStatus;
-  balance: number; // Positive means they owe money, negative means credit
+  balance: number; // CAMBIO: Positivo = A favor (Crédito), Negativo = Deuda
   plan: string;
-  // New fields for Engagement & CRM
+  // New fields
   points: number;
   level: 'Bronze' | 'Silver' | 'Gold';
-  streak: number; // Current streak in days
-  lastVisit: string; // ISO Date
-  birthDate: string; // YYYY-MM-DD
+  streak: number; 
+  lastVisit: string;
+  birthDate: string; 
   assignedRoutineId?: string;
+  emergencyContact?: string; // NUEVO CAMPO
 }
 
 export interface Transaction {
@@ -76,16 +77,15 @@ export interface Routine {
   exercisesCount: number;
 }
 
-// AI Prediction Types
 export interface TimeSlot {
-  hour: string; // "08:00"
-  occupancyScore: number; // 0-100
+  hour: string; 
+  occupancyScore: number; 
   isDeadHour: boolean;
 }
 
 export interface BusinessPrediction {
   predictedRevenue: number;
-  revenueTrendPercentage: number; // e.g. -10 or +5
+  revenueTrendPercentage: number; 
   summary: string;
   marketingStrategy: string;
   suggestedHappyHours: string[];
