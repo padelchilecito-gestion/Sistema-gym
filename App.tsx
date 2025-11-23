@@ -13,14 +13,21 @@ import { MarketingCRM } from './components/MarketingCRM';
 import { Settings } from './components/Settings';
 import { ClientPortal } from './components/ClientPortal';
 import { PredictiveAnalytics } from './components/PredictiveAnalytics';
-import { Client, Transaction, Product, CheckIn, GymSettings, MembershipStatus } from './types';
+import { Client, Transaction, Product, CheckIn, GymSettings, MembershipStatus, TransactionType } from './types';
 
-// Importaciones de Firebase
 import { db } from './firebase';
 import { collection, setDoc, doc, onSnapshot, query, orderBy, deleteDoc, updateDoc } from 'firebase/firestore';
 
 type View = 'dashboard' | 'clients' | 'accounting' | 'ai' | 'access' | 'inventory' | 'notifications' | 'gamification' | 'workouts' | 'marketing' | 'settings' | 'predictive';
 type Role = 'admin' | 'client';
+
+// PRECIOS DE TUS PLANES (Configúralos aquí por ahora)
+const PLAN_PRICES: Record<string, number> = {
+  'Básico': 3000,
+  'Standard': 5000,
+  'Premium': 7000,
+  'Estándar': 5000 // Por si acaso hay variantes en el nombre
+};
 
 function App() {
   const [currentView, setCurrentView] = useState<View>('dashboard');
@@ -79,26 +86,120 @@ function App() {
   }, []);
 
 
+  // --- PROCESO DE COBRO AUTOMÁTICO DE CUOTAS ---
+  useEffect(() => {
+    if (clients.length === 0) return;
+
+    const checkMemberships = async () => {
+      const today = new Date();
+      
+      clients.forEach(async (client) => {
+        // Solo cobramos a clientes activos
+        if (client.status !== MembershipStatus.ACTIVE) return;
+
+        // Determinamos la fecha del último cobro. Si no tiene, usamos la fecha de ingreso.
+        const lastPaymentStr = client.lastMembershipPayment || client.joinDate;
+        const lastPaymentDate = new Date(lastPaymentStr);
+        
+        // Calculamos cuándo debería ser el próximo pago (1 mes después del último)
+        const nextPaymentDate = new Date(lastPaymentDate);
+        nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 1);
+
+        // Si HOY ya pasó la fecha del próximo pago, hay que cobrar
+        if (today >= nextPaymentDate) {
+          console.log(`Generando cuota automática para: ${client.name}`);
+          
+          const amount = PLAN_PRICES[client.plan] || 0;
+          const description = `Cuota Mensual Automática (${client.plan})`;
+
+          if (amount > 0) {
+            // 1. Crear transacción de cobro (Ingreso pero resta saldo al cliente)
+            // OJO: Es un "Ingreso" contable para el Gym, pero sale del saldo del cliente.
+            const newTransaction: Transaction = {
+              id: crypto.randomUUID(),
+              clientId: client.id,
+              description: description,
+              amount: amount,
+              date: new Date().toISOString().split('T')[0],
+              type: TransactionType.INCOME,
+              category: 'Cuota' // Categoría solicitada
+            };
+            await setDoc(doc(db, 'transactions', newTransaction.id), newTransaction);
+
+            // 2. Actualizar Cliente: Restar saldo y actualizar fecha de último pago
+            // Si saldo es 0, queda en -Amount (Deuda). Si tenía crédito, se descuenta.
+            const newBalance = client.balance - amount;
+            
+            await updateDoc(doc(db, 'clients', client.id), {
+              balance: newBalance,
+              lastMembershipPayment: new Date().toISOString().split('T')[0] // Se marca hoy como pagado
+            });
+          }
+        }
+      });
+    };
+
+    // Ejecutamos la revisión con un pequeño delay para no saturar al inicio
+    const timer = setTimeout(() => {
+      checkMemberships();
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, [clients]); 
+  // Nota: Esto se ejecutará cada vez que 'clients' cambie, pero la lógica de fechas impide cobros dobles.
+
+
   // --- Funciones de Acción ---
 
   const addClient = async (client: Client) => {
-    await setDoc(doc(db, 'clients', client.id), client);
+    // Al crear cliente, seteamos su 'lastMembershipPayment' a hoy para que no le cobre inmediatamente,
+    // o a su fecha de ingreso si es antigua.
+    const clientWithPayment = {
+      ...client,
+      lastMembershipPayment: client.joinDate // El sistema cobrará al mes siguiente de esta fecha
+    };
+    await setDoc(doc(db, 'clients', client.id), clientWithPayment);
   };
 
-  // NUEVO: Función para actualizar cliente (Editar / Pagar)
   const updateClient = async (clientId: string, data: Partial<Client>) => {
     await updateDoc(doc(db, 'clients', clientId), data);
   };
 
-  // NUEVO: Función para borrar cliente
   const deleteClient = async (clientId: string) => {
     if(window.confirm('¿Estás seguro de borrar este cliente? Esta acción no se puede deshacer.')) {
       await deleteDoc(doc(db, 'clients', clientId));
     }
   };
 
+  // Función para registrar pagos MANUALES (El cliente viene y paga dinero)
+  const registerPayment = async (client: Client, amount: number, description: string) => {
+    const newTransaction: Transaction = {
+      id: crypto.randomUUID(),
+      clientId: client.id,
+      description: description,
+      amount: amount,
+      date: new Date().toISOString().split('T')[0],
+      type: TransactionType.INCOME,
+      category: 'Cuota' // Asumimos que si paga es cuota, o podría ser 'Abono'
+    };
+    await setDoc(doc(db, 'transactions', newTransaction.id), newTransaction);
+
+    const newBalance = client.balance + amount;
+    await updateDoc(doc(db, 'clients', client.id), { balance: newBalance });
+  };
+
   const addTransaction = async (transaction: Transaction) => {
     await setDoc(doc(db, 'transactions', transaction.id), transaction);
+  };
+
+  const updateTransaction = async (id: string, data: Partial<Transaction>) => {
+    await updateDoc(doc(db, 'transactions', id), data);
+  };
+
+  const deleteTransaction = async (id: string) => {
+    if(window.confirm('¿Borrar este movimiento contable?')) {
+      await deleteDoc(doc(db, 'transactions', id));
+    }
   };
 
   const addProduct = async (product: Product) => {
@@ -131,44 +232,23 @@ function App() {
     return (
       <>
         <div className="fixed top-4 right-4 z-50">
-           <button 
-              onClick={() => setCurrentRole('admin')}
-              className="bg-slate-800 text-white px-4 py-2 rounded-full text-xs font-bold shadow-lg flex items-center gap-2 hover:bg-slate-700"
-           >
+           <button onClick={() => setCurrentRole('admin')} className="bg-slate-800 text-white px-4 py-2 rounded-full text-xs font-bold shadow-lg flex items-center gap-2 hover:bg-slate-700">
              <Monitor size={14} /> Cambiar a Admin (PC)
            </button>
         </div>
-        <ClientPortal 
-          client={clients[0] || { 
-             id: 'demo', name: 'Usuario Demo', email: 'demo@gym.com', phone: '', 
-             joinDate: '', status: MembershipStatus.ACTIVE, balance: 0, plan: 'Básico', 
-             points: 0, level: 'Bronze', streak: 0, lastVisit: '', birthDate: '' 
-          }} 
-          settings={gymSettings} 
-          onLogout={() => setCurrentRole('admin')} 
-        />
+        <ClientPortal client={clients[0] || { id: 'demo', name: 'Usuario Demo', email: 'demo@gym.com', phone: '', joinDate: '', status: MembershipStatus.ACTIVE, balance: 0, plan: 'Básico', points: 0, level: 'Bronze', streak: 0, lastVisit: '', birthDate: '' }} settings={gymSettings} onLogout={() => setCurrentRole('admin')} />
       </>
     );
   }
 
-  // CAMBIO LÓGICA: Ahora deuda es balance < 0
   const debtorsCount = clients.filter(c => c.balance < 0).length;
 
   const NavItem = ({ view, label, icon: Icon, badge, requiredPlan }: { view: View, label: string, icon: any, badge?: number, requiredPlan?: 'basic' | 'standard' | 'full' }) => {
     if (requiredPlan && !hasFeature(requiredPlan)) return null;
     return (
-      <button
-        onClick={() => { setCurrentView(view); setIsSidebarOpen(false); }}
-        className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-colors font-medium relative
-          ${currentView === view ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'}`}
-      >
-        <Icon size={18} />
-        <span className="text-sm">{label}</span>
-        {badge !== undefined && badge > 0 && (
-          <span className="absolute right-4 top-1/2 -translate-y-1/2 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-            {badge}
-          </span>
-        )}
+      <button onClick={() => { setCurrentView(view); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-colors font-medium relative ${currentView === view ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'}`}>
+        <Icon size={18} /> <span className="text-sm">{label}</span>
+        {badge !== undefined && badge > 0 && <span className="absolute right-4 top-1/2 -translate-y-1/2 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{badge}</span>}
       </button>
     );
   };
@@ -176,10 +256,7 @@ function App() {
   return (
     <div className="min-h-screen bg-slate-50 flex font-sans">
       <div className="fixed top-4 right-4 z-50 hidden lg:block">
-           <button 
-              onClick={() => setCurrentRole('client')}
-              className="bg-indigo-600 text-white px-4 py-2 rounded-full text-xs font-bold shadow-lg flex items-center gap-2 hover:bg-indigo-500 transition-all transform hover:scale-105"
-           >
+           <button onClick={() => setCurrentRole('client')} className="bg-indigo-600 text-white px-4 py-2 rounded-full text-xs font-bold shadow-lg flex items-center gap-2 hover:bg-indigo-500 transition-all transform hover:scale-105">
              <Smartphone size={14} /> Ver App Cliente
            </button>
       </div>
@@ -192,10 +269,7 @@ function App() {
             <div className="bg-blue-600 p-2 rounded-lg text-white shadow-lg shadow-blue-200 overflow-hidden">
               {gymSettings.logoUrl ? <img src={gymSettings.logoUrl} className="w-5 h-5 object-cover" alt="" /> : <Dumbbell size={20} strokeWidth={3} />}
             </div>
-            <div>
-               <h1 className="text-base font-bold text-slate-900 tracking-tight leading-none truncate max-w-[140px]">{gymSettings.name}</h1>
-               <span className="text-[10px] text-slate-400 uppercase font-bold">{gymSettings.plan} Plan</span>
-            </div>
+            <div><h1 className="text-base font-bold text-slate-900 tracking-tight leading-none truncate max-w-[140px]">{gymSettings.name}</h1><span className="text-[10px] text-slate-400 uppercase font-bold">{gymSettings.plan} Plan</span></div>
           </div>
           <nav className="space-y-1 flex-1 overflow-y-auto max-h-[calc(100vh-180px)] pr-2 custom-scrollbar">
             <div className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 mt-1">Gestión</div>
@@ -231,8 +305,8 @@ function App() {
         </div>
         <div className="mt-auto p-6 border-t border-slate-100">
           <div className="flex items-center gap-3 px-2">
-            <div className="w-8 h-8 rounded-full bg-slate-900 flex items-center justify-center font-bold text-white text-xs">AD</div>
-            <div className="text-sm"><p className="font-medium text-slate-900">Admin</p><p className="text-slate-500 text-xs">admin@gymflow.com</p></div>
+             <div className="w-8 h-8 rounded-full bg-slate-900 flex items-center justify-center font-bold text-white text-xs">AD</div>
+             <div className="text-sm"><p className="font-medium text-slate-900">Admin</p><p className="text-slate-500 text-xs">admin@gymflow.com</p></div>
           </div>
         </div>
       </aside>
@@ -247,19 +321,18 @@ function App() {
 
         <div className="flex-1 overflow-auto bg-slate-50/50">
           <div className="max-w-7xl mx-auto">
-            {currentView === 'dashboard' && <Dashboard transactions={transactions} clients={clients} checkIns={checkIns} settings={gymSettings} />}
-            {/* PASAMOS LAS NUEVAS FUNCIONES A CLIENTS */}
-            {currentView === 'clients' && <Clients clients={clients} addClient={addClient} updateClient={updateClient} deleteClient={deleteClient} />}
-            {currentView === 'accounting' && <Accounting transactions={transactions} addTransaction={addTransaction} clients={clients} />}
-            {currentView === 'inventory' && <Inventory products={products} addProduct={addProduct} />}
-            {currentView === 'access' && <AccessControl checkIns={checkIns} clients={clients} onCheckIn={handleCheckIn} />}
-            {currentView === 'notifications' && <Notifications clients={clients} />}
-            {currentView === 'gamification' && <Gamification clients={clients} />}
-            {currentView === 'workouts' && <Workouts clients={clients} />}
-            {currentView === 'marketing' && <MarketingCRM clients={clients} />}
-            {currentView === 'ai' && <AIAssistant transactions={transactions} clients={clients} />}
-            {currentView === 'settings' && <Settings settings={gymSettings} onUpdateSettings={handleUpdateSettings} />}
-            {currentView === 'predictive' && <PredictiveAnalytics transactions={transactions} checkIns={checkIns} />}
+             {currentView === 'dashboard' && <Dashboard transactions={transactions} clients={clients} checkIns={checkIns} settings={gymSettings} />}
+             {currentView === 'clients' && <Clients clients={clients} addClient={addClient} updateClient={updateClient} deleteClient={deleteClient} registerPayment={registerPayment} />}
+             {currentView === 'accounting' && <Accounting transactions={transactions} addTransaction={addTransaction} updateTransaction={updateTransaction} deleteTransaction={deleteTransaction} clients={clients} />}
+             {currentView === 'inventory' && <Inventory products={products} addProduct={addProduct} />}
+             {currentView === 'access' && <AccessControl checkIns={checkIns} clients={clients} onCheckIn={handleCheckIn} />}
+             {currentView === 'notifications' && <Notifications clients={clients} />}
+             {currentView === 'gamification' && <Gamification clients={clients} />}
+             {currentView === 'workouts' && <Workouts clients={clients} />}
+             {currentView === 'marketing' && <MarketingCRM clients={clients} />}
+             {currentView === 'ai' && <AIAssistant transactions={transactions} clients={clients} />}
+             {currentView === 'settings' && <Settings settings={gymSettings} onUpdateSettings={handleUpdateSettings} />}
+             {currentView === 'predictive' && <PredictiveAnalytics transactions={transactions} checkIns={checkIns} />}
           </div>
         </div>
       </main>
