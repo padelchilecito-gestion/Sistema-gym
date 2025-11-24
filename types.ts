@@ -13,13 +13,12 @@ export type SubscriptionPlan = 'Basic' | 'Standard' | 'Full';
 
 export type UserRole = 'admin' | 'instructor' | 'client';
 
-// NUEVO: Interfaz para el Staff (Instructores y Admins)
 export interface Staff {
   id: string;
   name: string;
   email: string;
   role: 'admin' | 'instructor';
-  password?: string; // En producción real esto no debería guardarse plano, pero sirve para el MVP
+  password?: string; 
 }
 
 export interface GymSettings {
@@ -48,7 +47,7 @@ export interface Client {
   lastVisit: string;
   birthDate: string; 
   assignedRoutineId?: string;
-  routineStartDate?: string; // NUEVO: Para saber qué día le toca
+  routineStartDate?: string; 
   emergencyContact?: string;
   lastMembershipPayment?: string;
   password?: string; 
@@ -81,13 +80,24 @@ export interface CheckIn {
   checkoutTimestamp?: string | null;
 }
 
+// NUEVO: Definición de un Ejercicio individual
+export interface Exercise {
+  id: string;
+  name: string;        // Ej: "Prensa 45°"
+  machine?: string;    // Ej: "Máquina #3 - Zona Piernas"
+  sets: number;        // Ej: 4
+  reps: string;        // Ej: "12-15" o "Fallo"
+  notes?: string;      // Ej: "Bajar lento, subir explosivo"
+  completed?: boolean; // Para el estado local del cliente (no se guarda en DB rutina general)
+}
+
+// ACTUALIZADO: Rutina ahora contiene una lista de ejercicios
 export interface Routine {
   id: string;
   name: string;
   difficulty: 'Principiante' | 'Intermedio' | 'Avanzado';
   description: string;
-  exercisesCount: number;
-  // Aquí podrías agregar un array de ejercicios en el futuro
+  exercises: Exercise[]; // Lista de ejercicios
 }
 
 export interface TimeSlot {
