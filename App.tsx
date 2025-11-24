@@ -1,5 +1,6 @@
+// ... (Imports anteriores: LayoutDashboard, Users, etc...)
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, Users, Calculator, Bot, Menu, Dumbbell, ScanLine, Package, Bell, Trophy, HeartPulse, Activity, Settings as SettingsIcon, Monitor, Smartphone, LogOut } from 'lucide-react';
+import { LayoutDashboard, Users, Calculator, Menu, Dumbbell, ScanLine, Package, Bell, Trophy, HeartPulse, Activity, Settings as SettingsIcon, Monitor, Smartphone, LogOut } from 'lucide-react';
 import { Dashboard } from './components/Dashboard';
 import { Clients } from './components/Clients';
 import { Accounting } from './components/Accounting';
@@ -36,40 +37,32 @@ function App() {
     name: 'GymFlow Fitness',
     logoUrl: '',
     plan: 'Full',
-    membershipPrices: { basic: 0, intermediate: 0, full: 0 }
+    membershipPrices: { basic: 0, intermediate: 0, full: 0 },
+    rewards: [] // Inicializar premios
   });
 
   useEffect(() => {
     if (!userRole) return;
-
+    // ... (Queries anteriores iguales) ...
     const qClients = query(collection(db, 'clients'), orderBy('name'));
     const unsubClients = onSnapshot(qClients, (s) => setClients(s.docs.map(d => ({ ...d.data(), id: d.id } as Client))));
-
     const qTrans = query(collection(db, 'transactions'), orderBy('date', 'desc'));
     const unsubTrans = onSnapshot(qTrans, (s) => setTransactions(s.docs.map(d => ({ ...d.data(), id: d.id } as Transaction))));
-
     const qProds = query(collection(db, 'products'), orderBy('name'));
     const unsubProds = onSnapshot(qProds, (s) => setProducts(s.docs.map(d => ({ ...d.data(), id: d.id } as Product))));
-
     const qCheck = query(collection(db, 'checkins'), orderBy('timestamp', 'desc')); 
     const unsubCheck = onSnapshot(qCheck, (s) => setCheckIns(s.docs.map(d => ({ ...d.data(), id: d.id } as CheckIn))));
-
     const qRout = query(collection(db, 'routines'));
     const unsubRout = onSnapshot(qRout, (s) => setRoutines(s.docs.map(d => ({ ...d.data(), id: d.id } as Routine))));
-
     const qStaff = query(collection(db, 'staff'));
     const unsubStaff = onSnapshot(qStaff, (s) => setStaffList(s.docs.map(d => ({ ...d.data(), id: d.id } as Staff))));
-
     const unsubSettings = onSnapshot(doc(db, 'settings', 'config'), (doc) => {
       if (doc.exists()) {
         const data = doc.data() as GymSettings;
-        setGymSettings({ ...data, membershipPrices: data.membershipPrices || { basic: 0, intermediate: 0, full: 0 } });
+        setGymSettings({ ...data, membershipPrices: data.membershipPrices || { basic: 0, intermediate: 0, full: 0 }, rewards: data.rewards || [] });
       }
     });
-
-    return () => {
-      unsubClients(); unsubTrans(); unsubProds(); unsubCheck(); unsubRout(); unsubStaff(); unsubSettings();
-    };
+    return () => { unsubClients(); unsubTrans(); unsubProds(); unsubCheck(); unsubRout(); unsubStaff(); unsubSettings(); };
   }, [userRole]);
 
   const getPlanPrice = (planCode: string) => {
@@ -77,67 +70,76 @@ function App() {
     return prices[planCode] || 0;
   };
 
-  // --- Funciones de Acción ---
-  const addClient = async (client: Client) => {
-    const planPrice = getPlanPrice(client.plan);
-    const initialBalance = client.balance; 
-    const finalBalance = initialBalance - planPrice;
-    const clientWithPayment = { ...client, balance: finalBalance, lastMembershipPayment: new Date().toISOString().split('T')[0] };
-    await setDoc(doc(db, 'clients', client.id), clientWithPayment);
-    if (planPrice > 0) {
-      const newTransaction: Transaction = {
-        id: crypto.randomUUID(), clientId: client.id, description: `Pago Inicial - Alta Cliente (Plan ${client.plan})`, amount: planPrice, date: new Date().toISOString().split('T')[0], type: TransactionType.INCOME, category: 'Cuota'
-      };
-      await setDoc(doc(db, 'transactions', newTransaction.id), newTransaction);
-    }
+  // Funciones CRUD (Igual que antes)
+  const addClient = async (c: Client) => {
+    const price = getPlanPrice(c.plan);
+    const finalBalance = c.balance - price;
+    const clientWithPayment = { ...c, balance: finalBalance, lastMembershipPayment: new Date().toISOString().split('T')[0] };
+    await setDoc(doc(db, 'clients', c.id), clientWithPayment);
+    if (price > 0) await setDoc(doc(db, 'transactions', crypto.randomUUID()), { id: crypto.randomUUID(), clientId: c.id, description: `Pago Inicial - Alta`, amount: price, date: new Date().toISOString().split('T')[0], type: TransactionType.INCOME, category: 'Cuota' });
   };
-
-  const updateClient = async (clientId: string, data: Partial<Client>) => await updateDoc(doc(db, 'clients', clientId), data);
-  const deleteClient = async (clientId: string) => { if(window.confirm('¿Seguro?')) await deleteDoc(doc(db, 'clients', clientId)); };
-  const registerPayment = async (client: Client, amount: number, description: string) => {
-    const newTransaction: Transaction = { id: crypto.randomUUID(), clientId: client.id, description: description, amount: amount, date: new Date().toISOString().split('T')[0], type: TransactionType.INCOME, category: 'Cuota' };
-    await setDoc(doc(db, 'transactions', newTransaction.id), newTransaction);
-    const newBalance = client.balance + amount;
-    await updateDoc(doc(db, 'clients', client.id), { balance: newBalance });
+  const updateClient = async (id: string, data: Partial<Client>) => await updateDoc(doc(db, 'clients', id), data);
+  const deleteClient = async (id: string) => { if(window.confirm('¿Seguro?')) await deleteDoc(doc(db, 'clients', id)); };
+  const registerPayment = async (client: Client, amount: number, desc: string) => {
+    await setDoc(doc(db, 'transactions', crypto.randomUUID()), { id: crypto.randomUUID(), clientId: client.id, description: desc, amount, date: new Date().toISOString().split('T')[0], type: TransactionType.INCOME, category: 'Cuota' });
+    await updateDoc(doc(db, 'clients', client.id), { balance: client.balance + amount });
   };
   const addTransaction = async (t: Transaction) => await setDoc(doc(db, 'transactions', t.id), t);
-  const updateTransaction = async (id: string, data: Partial<Transaction>) => await updateDoc(doc(db, 'transactions', id), data);
+  const updateTransaction = async (id: string, d: Partial<Transaction>) => await updateDoc(doc(db, 'transactions', id), d);
   const deleteTransaction = async (id: string) => { if(window.confirm('¿Seguro?')) await deleteDoc(doc(db, 'transactions', id)); };
   const addProduct = async (p: Product) => await setDoc(doc(db, 'products', p.id), p);
   const handleCheckIn = async (client: Client) => {
-    const newCheckIn: CheckIn = { id: crypto.randomUUID(), clientId: client.id, clientName: client.name, timestamp: new Date().toISOString(), checkoutTimestamp: null };
-    await setDoc(doc(db, 'checkins', newCheckIn.id), newCheckIn);
+    await setDoc(doc(db, 'checkins', crypto.randomUUID()), { id: crypto.randomUUID(), clientId: client.id, clientName: client.name, timestamp: new Date().toISOString(), checkoutTimestamp: null });
   };
-  const handleCheckOut = async (checkInId: string) => await updateDoc(doc(db, 'checkins', checkInId), { checkoutTimestamp: new Date().toISOString() });
-  
+  const handleCheckOut = async (id: string) => await updateDoc(doc(db, 'checkins', id), { checkoutTimestamp: new Date().toISOString() });
   const addRoutine = async (r: Routine) => await setDoc(doc(db, 'routines', r.id), r);
-  const updateRoutine = async (id: string, data: Partial<Routine>) => await updateDoc(doc(db, 'routines', id), data);
-  const deleteRoutine = async (id: string) => { if(window.confirm('¿Estás seguro de eliminar esta rutina?')) await deleteDoc(doc(db, 'routines', id)); };
-
+  const updateRoutine = async (id: string, d: Partial<Routine>) => await updateDoc(doc(db, 'routines', id), d);
+  const deleteRoutine = async (id: string) => { if(window.confirm('¿Seguro?')) await deleteDoc(doc(db, 'routines', id)); };
   const handleUpdateSettings = async (s: GymSettings) => { await setDoc(doc(db, 'settings', 'config'), s); setGymSettings(s); };
-  const addStaff = async (staff: Staff) => await setDoc(doc(db, 'staff', staff.id), staff);
+  const addStaff = async (s: Staff) => await setDoc(doc(db, 'staff', s.id), s);
   const deleteStaff = async (id: string) => { if(window.confirm('¿Borrar usuario?')) await deleteDoc(doc(db, 'staff', id)); };
-  const updateStaffPassword = async (id: string, newPass: string) => await updateDoc(doc(db, 'staff', id), { password: newPass });
+  const updateStaffPassword = async (id: string, pass: string) => await updateDoc(doc(db, 'staff', id), { password: pass });
+
+  // NUEVO: Completar Sesión (Sumar Puntos y Racha)
+  const handleCompleteSession = async (pointsEarned: number) => {
+    if (!currentUser) return;
+    
+    // Calcular nueva racha
+    const lastVisit = new Date(currentUser.lastVisit);
+    const today = new Date();
+    const diffTime = Math.abs(today.getTime() - lastVisit.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    let newStreak = currentUser.streak;
+    // Si la última visita fue ayer (aprox 1 día), suma racha. Si fue hoy, mantiene. Si fue antes, reinicia.
+    if (diffDays === 1) newStreak += 1;
+    else if (diffDays > 1) newStreak = 1;
+
+    // Actualizar Cliente
+    const updates = {
+        points: (currentUser.points || 0) + pointsEarned,
+        streak: newStreak,
+        lastVisit: new Date().toISOString()
+    };
+    
+    await updateDoc(doc(db, 'clients', currentUser.id), updates);
+    
+    // Actualizar estado local para reflejo inmediato
+    setCurrentUser({ ...currentUser, ...updates });
+  };
 
   const hasAccess = (view: View) => {
     if (userRole === 'admin') return true;
     if (userRole === 'instructor') return ['dashboard', 'clients', 'access', 'workouts'].includes(view);
     return false; 
   };
-
+  const hasFeature = (feature: 'basic' | 'standard' | 'full') => { if (gymSettings.plan === 'Full') return true; if (gymSettings.plan === 'Standard' && feature !== 'full') return true; if (gymSettings.plan === 'Basic' && feature === 'basic') return true; return false; };
   const handleLogout = () => { setUserRole(null); setCurrentUser(undefined); setCurrentView('dashboard'); };
-  const hasFeature = (feature: 'basic' | 'standard' | 'full') => {
-    if (gymSettings.plan === 'Full') return true;
-    if (gymSettings.plan === 'Standard' && feature !== 'full') return true;
-    if (gymSettings.plan === 'Basic' && feature === 'basic') return true;
-    return false;
-  };
 
   if (!userRole) return <Login onLogin={(role, data) => { setUserRole(role); if (role === 'client' && data) setCurrentUser(data as Client); }} />;
-  if (userRole === 'client' && currentUser) return <ClientPortal client={currentUser} settings={gymSettings} checkIns={checkIns} routines={routines} onLogout={handleLogout} />;
+  if (userRole === 'client' && currentUser) return <ClientPortal client={currentUser} settings={gymSettings} checkIns={checkIns} routines={routines} onLogout={handleLogout} onCompleteSession={handleCompleteSession} />;
 
   const debtorsCount = clients.filter(c => c.balance < 0).length;
-
   const NavItem = ({ view, label, icon: Icon, badge, requiredPlan }: { view: View, label: string, icon: any, badge?: number, requiredPlan?: 'basic' | 'standard' | 'full' }) => {
     if (!hasAccess(view)) return null; 
     if (requiredPlan && !hasFeature(requiredPlan)) return null;
@@ -204,15 +206,13 @@ function App() {
         <div className="flex-1 overflow-auto bg-slate-50/50">
           <div className="max-w-7xl mx-auto">
              {currentView === 'dashboard' && <Dashboard transactions={transactions} clients={clients} checkIns={checkIns} settings={gymSettings} />}
-             
-             {/* AQUÍ PASAMOS ROUTINES A CLIENTS */}
-             {currentView === 'clients' && <Clients clients={clients} routines={routines} addClient={addClient} updateClient={updateClient} deleteClient={deleteClient} registerPayment={registerPayment} />}
-             
+             {currentView === 'clients' && <Clients clients={clients} addClient={addClient} updateClient={updateClient} deleteClient={deleteClient} registerPayment={registerPayment} routines={routines} />}
              {currentView === 'accounting' && <Accounting transactions={transactions} addTransaction={addTransaction} updateTransaction={updateTransaction} deleteTransaction={deleteTransaction} clients={clients} />}
              {currentView === 'inventory' && <Inventory products={products} addProduct={addProduct} />}
              {currentView === 'access' && <AccessControl checkIns={checkIns} clients={clients} onCheckIn={handleCheckIn} onCheckOut={handleCheckOut} />}
              {currentView === 'notifications' && <Notifications clients={clients} />}
-             {currentView === 'gamification' && <Gamification clients={clients} />}
+             {/* Pasa rewards a gamification */}
+             {currentView === 'gamification' && <Gamification clients={clients} rewards={gymSettings.rewards} />}
              {currentView === 'workouts' && <Workouts clients={clients} routines={routines} addRoutine={addRoutine} updateRoutine={updateRoutine} deleteRoutine={deleteRoutine} updateClient={updateClient} />}
              {currentView === 'marketing' && <MarketingCRM clients={clients} />}
              {currentView === 'settings' && <Settings settings={gymSettings} onUpdateSettings={handleUpdateSettings} staffList={staffList} addStaff={addStaff} deleteStaff={deleteStaff} updateStaffPassword={updateStaffPassword} />}
