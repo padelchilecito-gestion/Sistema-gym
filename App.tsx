@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, Users, Calculator, Bot, Menu, Dumbbell, ScanLine, Package, Bell, Trophy, HeartPulse, Activity, Lightbulb, Settings as SettingsIcon, Monitor, Smartphone, LogOut } from 'lucide-react';
+import { LayoutDashboard, Users, Calculator, Menu, Dumbbell, ScanLine, Package, Bell, Trophy, HeartPulse, Activity, Settings as SettingsIcon, Monitor, Smartphone, LogOut } from 'lucide-react';
 import { Dashboard } from './components/Dashboard';
 import { Clients } from './components/Clients';
 import { Accounting } from './components/Accounting';
-import { AIAssistant } from './components/AIAssistant';
 import { AccessControl } from './components/AccessControl';
 import { Inventory } from './components/Inventory';
 import { Notifications } from './components/Notifications';
@@ -12,14 +11,13 @@ import { Workouts } from './components/Workouts';
 import { MarketingCRM } from './components/MarketingCRM';
 import { Settings } from './components/Settings';
 import { ClientPortal } from './components/ClientPortal';
-import { PredictiveAnalytics } from './components/PredictiveAnalytics';
 import { Login } from './components/Login';
 import { Client, Transaction, Product, CheckIn, GymSettings, MembershipStatus, TransactionType, Routine, UserRole, Staff } from './types';
 
 import { db } from './firebase';
 import { collection, setDoc, doc, onSnapshot, query, orderBy, deleteDoc, updateDoc } from 'firebase/firestore';
 
-type View = 'dashboard' | 'clients' | 'accounting' | 'ai' | 'access' | 'inventory' | 'notifications' | 'gamification' | 'workouts' | 'marketing' | 'settings' | 'predictive';
+type View = 'dashboard' | 'clients' | 'accounting' | 'access' | 'inventory' | 'notifications' | 'gamification' | 'workouts' | 'marketing' | 'settings';
 
 function App() {
   // ESTADO DE SESIÓN
@@ -41,7 +39,7 @@ function App() {
   const [gymSettings, setGymSettings] = useState<GymSettings>({
     name: 'GymFlow Fitness',
     logoUrl: '',
-    plan: 'Full',
+    plan: 'Full', // Plan por defecto
     membershipPrices: { basic: 0, intermediate: 0, full: 0 }
   });
 
@@ -139,6 +137,7 @@ function App() {
     setCurrentView('dashboard');
   };
 
+  // LÓGICA DE PLANES (SaaS)
   const hasFeature = (feature: 'basic' | 'standard' | 'full') => {
     if (gymSettings.plan === 'Full') return true;
     if (gymSettings.plan === 'Standard' && feature !== 'full') return true;
@@ -151,10 +150,7 @@ function App() {
   if (!userRole) {
     return <Login onLogin={(role, data) => {
       setUserRole(role);
-      // Si es cliente, data es Client; si es staff, es Staff.
-      // Para el portal de cliente necesitamos que sea tipo Client.
       if (role === 'client' && data) {
-         // Aseguramos que data tenga las propiedades de Client
          setCurrentUser(data as Client);
       }
     }} />;
@@ -176,7 +172,7 @@ function App() {
 
   const NavItem = ({ view, label, icon: Icon, badge, requiredPlan }: { view: View, label: string, icon: any, badge?: number, requiredPlan?: 'basic' | 'standard' | 'full' }) => {
     if (!hasAccess(view)) return null; 
-    if (requiredPlan && !hasFeature(requiredPlan)) return null;
+    if (requiredPlan && !hasFeature(requiredPlan)) return null; // Aquí se ocultan las pestañas según el plan
     return (
       <button onClick={() => { setCurrentView(view); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-colors font-medium relative ${currentView === view ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'}`}>
         <Icon size={18} /> <span className="text-sm">{label}</span>
@@ -205,21 +201,24 @@ function App() {
             <NavItem view="access" label="Control Acceso" icon={ScanLine} requiredPlan="standard" />
             <NavItem view="inventory" label="Inventario" icon={Package} requiredPlan="full" />
             
-            <div className="pt-4 mt-4 border-t border-slate-100">
-                <div className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Fidelización</div>
-                <NavItem view="gamification" label="Gamificación" icon={Trophy} requiredPlan="full" />
-                <NavItem view="workouts" label="Entrenamientos" icon={Activity} requiredPlan="full" />
-            </div>
+            {/* Solo Plan Full ve Fidelización */}
+            {hasFeature('full') && (
+              <div className="pt-4 mt-4 border-t border-slate-100">
+                  <div className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Fidelización</div>
+                  <NavItem view="gamification" label="Gamificación" icon={Trophy} requiredPlan="full" />
+                  <NavItem view="workouts" label="Entrenamientos" icon={Activity} requiredPlan="full" />
+              </div>
+            )}
             
             <div className="pt-4 mt-4 border-t border-slate-100">
                <div className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Marketing</div>
                <NavItem view="notifications" label="Cobranzas" icon={Bell} badge={debtorsCount} requiredPlan="basic" />
                <NavItem view="marketing" label="CRM & Rescate" icon={HeartPulse} requiredPlan="standard" />
             </div>
+            
             <div className="pt-4 mt-4 border-t border-slate-100">
                <div className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Sistema</div>
-               <NavItem view="ai" label="Asistente AI" icon={Bot} requiredPlan="full" />
-               <NavItem view="predictive" label="IA Predictiva" icon={Lightbulb} requiredPlan="full" />
+               {/* IA Eliminada */}
                <NavItem view="settings" label="Configuración" icon={SettingsIcon} />
             </div>
           </nav>
@@ -257,9 +256,8 @@ function App() {
              {currentView === 'gamification' && <Gamification clients={clients} />}
              {currentView === 'workouts' && <Workouts clients={clients} routines={routines} addRoutine={addRoutine} updateClient={updateClient} />}
              {currentView === 'marketing' && <MarketingCRM clients={clients} />}
-             {currentView === 'ai' && <AIAssistant transactions={transactions} clients={clients} />}
+             {/* Settings ahora maneja la gestión de staff y planes */}
              {currentView === 'settings' && <Settings settings={gymSettings} onUpdateSettings={handleUpdateSettings} staffList={staffList} addStaff={addStaff} deleteStaff={deleteStaff} updateStaffPassword={updateStaffPassword} />}
-             {currentView === 'predictive' && <PredictiveAnalytics transactions={transactions} checkIns={checkIns} />}
           </div>
         </div>
       </main>
