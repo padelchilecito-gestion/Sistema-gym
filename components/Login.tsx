@@ -19,6 +19,21 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
     setLoading(true);
     setError('');
 
+    // --- ACCESO DE RESPALDO (BACKDOOR TEMPORAL) ---
+    // Esto asegura que siempre puedas entrar aunque la base de datos esté vacía
+    if (email === 'admin@gymflow.com' && password === 'admin123') {
+      console.log("Usando acceso de respaldo Admin");
+      onLogin('admin', { 
+        id: 'admin-master', 
+        name: 'Super Admin', 
+        email: 'admin@gymflow.com', 
+        role: 'admin' 
+      });
+      setLoading(false);
+      return;
+    }
+    // ---------------------------------------------
+
     try {
       // 1. Buscar en colección STAFF (Admins e Instructores)
       const staffQuery = query(collection(db, 'staff'), where('email', '==', email));
@@ -27,10 +42,14 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
       if (!staffSnapshot.empty) {
         const staffDoc = staffSnapshot.docs[0];
         const staffData = staffDoc.data() as Staff;
-        // Verificación simple de contraseña
+        
         if (staffData.password === password) {
           onLogin(staffData.role, { ...staffData, id: staffDoc.id });
           return;
+        } else {
+           setError('Contraseña incorrecta (Staff).');
+           setLoading(false);
+           return;
         }
       }
 
@@ -47,11 +66,15 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
         if (password === storedPass) {
           onLogin('client', { ...clientData, id: clientDoc.id });
           return;
+        } else {
+           setError('Contraseña incorrecta (Cliente).');
+           setLoading(false);
+           return;
         }
       }
 
-      // Si llegamos aquí, falló
-      setError('Credenciales inválidas.');
+      // Si llegamos aquí, no se encontró el email en ninguna parte
+      setError('Usuario no encontrado.');
 
     } catch (err) {
       console.error(err);
@@ -80,7 +103,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
               <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Email</label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                <input required type="email" className="w-full pl-10 p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                <input required type="email" className="w-full pl-10 p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
                   value={email} onChange={(e) => setEmail(e.target.value)} placeholder="usuario@gymflow.com" />
               </div>
             </div>
@@ -89,7 +112,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
               <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Contraseña</label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                <input required type="password" className="w-full pl-10 p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                <input required type="password" className="w-full pl-10 p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
                   value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" />
               </div>
             </div>
