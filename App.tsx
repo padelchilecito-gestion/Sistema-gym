@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, Users, Calculator, Menu, Dumbbell, ScanLine, Package, Bell, Trophy, HeartPulse, Activity, Settings as SettingsIcon, Monitor, Smartphone, LogOut } from 'lucide-react';
+import { LayoutDashboard, Users, Calculator, Bot, Menu, Dumbbell, ScanLine, Package, Bell, Trophy, HeartPulse, Activity, Settings as SettingsIcon, Monitor, Smartphone, LogOut } from 'lucide-react';
 import { Dashboard } from './components/Dashboard';
 import { Clients } from './components/Clients';
 import { Accounting } from './components/Accounting';
@@ -17,14 +17,18 @@ import { Client, Transaction, Product, CheckIn, GymSettings, MembershipStatus, T
 import { db } from './firebase';
 import { collection, setDoc, doc, onSnapshot, query, orderBy, deleteDoc, updateDoc } from 'firebase/firestore';
 
-type View = 'dashboard' | 'clients' | 'accounting' | 'ai' | 'access' | 'inventory' | 'notifications' | 'gamification' | 'workouts' | 'marketing' | 'settings';
+type View = 'dashboard' | 'clients' | 'accounting' | 'access' | 'inventory' | 'notifications' | 'gamification' | 'workouts' | 'marketing' | 'settings';
 
 function App() {
+  // ESTADO DE SESIÓN
   const [userRole, setUserRole] = useState<UserRole | null>(null);
   const [currentUser, setCurrentUser] = useState<Client | undefined>(undefined);
+
+  // ESTADO DE LA APP
   const [currentView, setCurrentView] = useState<View>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
+  // DATOS
   const [clients, setClients] = useState<Client[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -39,6 +43,7 @@ function App() {
     membershipPrices: { basic: 0, intermediate: 0, full: 0 }
   });
 
+  // --- Sincronización Firebase ---
   useEffect(() => {
     if (!userRole) return;
 
@@ -112,16 +117,8 @@ function App() {
   
   // Rutinas
   const addRoutine = async (r: Routine) => await setDoc(doc(db, 'routines', r.id), r);
-  
-  // NUEVO: Funciones para Editar y Borrar Rutinas
-  const updateRoutine = async (id: string, data: Partial<Routine>) => {
-    await updateDoc(doc(db, 'routines', id), data);
-  };
-  const deleteRoutine = async (id: string) => {
-    if(window.confirm('⚠️ Confirmación de Administrador:\n\n¿Estás seguro de eliminar esta rutina permanentemente?')) {
-      await deleteDoc(doc(db, 'routines', id));
-    }
-  };
+  const updateRoutine = async (id: string, data: Partial<Routine>) => await updateDoc(doc(db, 'routines', id), data);
+  const deleteRoutine = async (id: string) => { if(window.confirm('¿Estás seguro de eliminar esta rutina?')) await deleteDoc(doc(db, 'routines', id)); };
 
   const handleUpdateSettings = async (s: GymSettings) => { await setDoc(doc(db, 'settings', 'config'), s); setGymSettings(s); };
   const addStaff = async (staff: Staff) => await setDoc(doc(db, 'staff', staff.id), staff);
@@ -176,30 +173,23 @@ function App() {
             <NavItem view="accounting" label="Contabilidad" icon={Calculator} requiredPlan="basic" />
             <NavItem view="access" label="Control Acceso" icon={ScanLine} requiredPlan="standard" />
             <NavItem view="inventory" label="Inventario" icon={Package} requiredPlan="full" />
+            
             {hasFeature('full') && (
               <div className="pt-4 mt-4 border-t border-slate-100">
                   <div className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Fidelización</div>
                   <NavItem view="gamification" label="Gamificación" icon={Trophy} requiredPlan="full" />
-                  {/* Workouts actualizado con nuevas funciones */}
-                  {currentView === 'workouts' ? (
-                    <Workouts 
-                      clients={clients} 
-                      routines={routines} 
-                      addRoutine={addRoutine} 
-                      updateRoutine={updateRoutine} 
-                      deleteRoutine={deleteRoutine} 
-                      updateClient={updateClient} 
-                    />
-                  ) : (
-                    <NavItem view="workouts" label="Entrenamientos" icon={Activity} requiredPlan="full" />
-                  )}
+                  
+                  {/* CORRECCIÓN: Aquí estaba el error. Ahora solo es un botón */}
+                  <NavItem view="workouts" label="Entrenamientos" icon={Activity} requiredPlan="full" />
               </div>
             )}
+            
             <div className="pt-4 mt-4 border-t border-slate-100">
                <div className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Marketing</div>
                <NavItem view="notifications" label="Cobranzas" icon={Bell} badge={debtorsCount} requiredPlan="basic" />
                <NavItem view="marketing" label="CRM & Rescate" icon={HeartPulse} requiredPlan="standard" />
             </div>
+            
             <div className="pt-4 mt-4 border-t border-slate-100">
                <div className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Sistema</div>
                <NavItem view="settings" label="Configuración" icon={SettingsIcon} />
@@ -231,7 +221,7 @@ function App() {
              {currentView === 'access' && <AccessControl checkIns={checkIns} clients={clients} onCheckIn={handleCheckIn} onCheckOut={handleCheckOut} />}
              {currentView === 'notifications' && <Notifications clients={clients} />}
              {currentView === 'gamification' && <Gamification clients={clients} />}
-             {/* Workouts se renderiza arriba en el Sidebar para props, pero si está en main: */}
+             {/* La vista de Workouts se carga CORRECTAMENTE AQUÍ */}
              {currentView === 'workouts' && <Workouts clients={clients} routines={routines} addRoutine={addRoutine} updateRoutine={updateRoutine} deleteRoutine={deleteRoutine} updateClient={updateClient} />}
              {currentView === 'marketing' && <MarketingCRM clients={clients} />}
              {currentView === 'settings' && <Settings settings={gymSettings} onUpdateSettings={handleUpdateSettings} staffList={staffList} addStaff={addStaff} deleteStaff={deleteStaff} updateStaffPassword={updateStaffPassword} />}
