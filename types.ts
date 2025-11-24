@@ -21,6 +21,13 @@ export interface Staff {
   password?: string; 
 }
 
+// NUEVO: Definición de Premio
+export interface Reward {
+  id: string;
+  name: string;
+  points: number;
+}
+
 export interface GymSettings {
   name: string;
   logoUrl: string;
@@ -30,6 +37,7 @@ export interface GymSettings {
     intermediate: number;
     full: number;
   };
+  rewards?: Reward[]; // NUEVO: Lista de premios configurables
 }
 
 export interface Client {
@@ -80,24 +88,22 @@ export interface CheckIn {
   checkoutTimestamp?: string | null;
 }
 
-// NUEVO: Definición de un Ejercicio individual
 export interface Exercise {
   id: string;
-  name: string;        // Ej: "Prensa 45°"
-  machine?: string;    // Ej: "Máquina #3 - Zona Piernas"
-  sets: number;        // Ej: 4
-  reps: string;        // Ej: "12-15" o "Fallo"
-  notes?: string;      // Ej: "Bajar lento, subir explosivo"
-  completed?: boolean; // Para el estado local del cliente (no se guarda en DB rutina general)
+  name: string;
+  machine?: string;
+  sets: number;
+  reps: string;
+  notes?: string;
+  completed?: boolean; 
 }
 
-// ACTUALIZADO: Rutina ahora contiene una lista de ejercicios
 export interface Routine {
   id: string;
   name: string;
   difficulty: 'Principiante' | 'Intermedio' | 'Avanzado';
   description: string;
-  exercises: Exercise[]; // Lista de ejercicios
+  exercises: Exercise[]; 
 }
 
 export interface TimeSlot {
