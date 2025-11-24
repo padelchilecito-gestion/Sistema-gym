@@ -21,7 +21,6 @@ export interface Staff {
   password?: string; 
 }
 
-// NUEVO: Definición de Premio
 export interface Reward {
   id: string;
   name: string;
@@ -37,7 +36,7 @@ export interface GymSettings {
     intermediate: number;
     full: number;
   };
-  rewards?: Reward[]; // NUEVO: Lista de premios configurables
+  rewards?: Reward[];
 }
 
 export interface Client {
@@ -54,8 +53,9 @@ export interface Client {
   streak: number; 
   lastVisit: string;
   birthDate: string; 
-  assignedRoutineId?: string;
-  routineStartDate?: string; 
+  // CORRECCIÓN: Permitimos null para poder "borrar" la rutina
+  assignedRoutineId?: string | null;
+  routineStartDate?: string | null; 
   emergencyContact?: string;
   lastMembershipPayment?: string;
   password?: string; 
