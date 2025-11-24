@@ -17,18 +17,14 @@ import { Client, Transaction, Product, CheckIn, GymSettings, MembershipStatus, T
 import { db } from './firebase';
 import { collection, setDoc, doc, onSnapshot, query, orderBy, deleteDoc, updateDoc } from 'firebase/firestore';
 
-type View = 'dashboard' | 'clients' | 'accounting' | 'access' | 'inventory' | 'notifications' | 'gamification' | 'workouts' | 'marketing' | 'settings';
+type View = 'dashboard' | 'clients' | 'accounting' | 'ai' | 'access' | 'inventory' | 'notifications' | 'gamification' | 'workouts' | 'marketing' | 'settings';
 
 function App() {
-  // ESTADO DE SESIÓN
   const [userRole, setUserRole] = useState<UserRole | null>(null);
   const [currentUser, setCurrentUser] = useState<Client | undefined>(undefined);
-
-  // ESTADO DE LA APP
   const [currentView, setCurrentView] = useState<View>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
-  // DATOS
   const [clients, setClients] = useState<Client[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -39,11 +35,10 @@ function App() {
   const [gymSettings, setGymSettings] = useState<GymSettings>({
     name: 'GymFlow Fitness',
     logoUrl: '',
-    plan: 'Full', // Plan por defecto
+    plan: 'Full',
     membershipPrices: { basic: 0, intermediate: 0, full: 0 }
   });
 
-  // --- Sincronización Firebase ---
   useEffect(() => {
     if (!userRole) return;
 
@@ -114,30 +109,32 @@ function App() {
     await setDoc(doc(db, 'checkins', newCheckIn.id), newCheckIn);
   };
   const handleCheckOut = async (checkInId: string) => await updateDoc(doc(db, 'checkins', checkInId), { checkoutTimestamp: new Date().toISOString() });
-  const addRoutine = async (r: Routine) => await setDoc(doc(db, 'routines', r.id), r);
-  const handleUpdateSettings = async (s: GymSettings) => { await setDoc(doc(db, 'settings', 'config'), s); setGymSettings(s); };
   
-  // Staff actions
+  // Rutinas
+  const addRoutine = async (r: Routine) => await setDoc(doc(db, 'routines', r.id), r);
+  
+  // NUEVO: Funciones para Editar y Borrar Rutinas
+  const updateRoutine = async (id: string, data: Partial<Routine>) => {
+    await updateDoc(doc(db, 'routines', id), data);
+  };
+  const deleteRoutine = async (id: string) => {
+    if(window.confirm('⚠️ Confirmación de Administrador:\n\n¿Estás seguro de eliminar esta rutina permanentemente?')) {
+      await deleteDoc(doc(db, 'routines', id));
+    }
+  };
+
+  const handleUpdateSettings = async (s: GymSettings) => { await setDoc(doc(db, 'settings', 'config'), s); setGymSettings(s); };
   const addStaff = async (staff: Staff) => await setDoc(doc(db, 'staff', staff.id), staff);
   const deleteStaff = async (id: string) => { if(window.confirm('¿Borrar usuario?')) await deleteDoc(doc(db, 'staff', id)); };
   const updateStaffPassword = async (id: string, newPass: string) => await updateDoc(doc(db, 'staff', id), { password: newPass });
 
-  // --- CONTROL DE ACCESO POR ROL ---
   const hasAccess = (view: View) => {
     if (userRole === 'admin') return true;
-    if (userRole === 'instructor') {
-      return ['dashboard', 'clients', 'access', 'workouts'].includes(view);
-    }
+    if (userRole === 'instructor') return ['dashboard', 'clients', 'access', 'workouts'].includes(view);
     return false; 
   };
 
-  const handleLogout = () => {
-    setUserRole(null);
-    setCurrentUser(undefined);
-    setCurrentView('dashboard');
-  };
-
-  // LÓGICA DE PLANES (SaaS)
+  const handleLogout = () => { setUserRole(null); setCurrentUser(undefined); setCurrentView('dashboard'); };
   const hasFeature = (feature: 'basic' | 'standard' | 'full') => {
     if (gymSettings.plan === 'Full') return true;
     if (gymSettings.plan === 'Standard' && feature !== 'full') return true;
@@ -145,34 +142,14 @@ function App() {
     return false;
   };
 
-  // --- RENDERIZADO ---
-
-  if (!userRole) {
-    return <Login onLogin={(role, data) => {
-      setUserRole(role);
-      if (role === 'client' && data) {
-         setCurrentUser(data as Client);
-      }
-    }} />;
-  }
-
-  if (userRole === 'client' && currentUser) {
-    return (
-      <ClientPortal 
-        client={currentUser} 
-        settings={gymSettings} 
-        checkIns={checkIns} 
-        routines={routines} 
-        onLogout={handleLogout} 
-      />
-    );
-  }
+  if (!userRole) return <Login onLogin={(role, data) => { setUserRole(role); if (role === 'client' && data) setCurrentUser(data as Client); }} />;
+  if (userRole === 'client' && currentUser) return <ClientPortal client={currentUser} settings={gymSettings} checkIns={checkIns} routines={routines} onLogout={handleLogout} />;
 
   const debtorsCount = clients.filter(c => c.balance < 0).length;
 
   const NavItem = ({ view, label, icon: Icon, badge, requiredPlan }: { view: View, label: string, icon: any, badge?: number, requiredPlan?: 'basic' | 'standard' | 'full' }) => {
     if (!hasAccess(view)) return null; 
-    if (requiredPlan && !hasFeature(requiredPlan)) return null; // Aquí se ocultan las pestañas según el plan
+    if (requiredPlan && !hasFeature(requiredPlan)) return null;
     return (
       <button onClick={() => { setCurrentView(view); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-colors font-medium relative ${currentView === view ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'}`}>
         <Icon size={18} /> <span className="text-sm">{label}</span>
@@ -184,7 +161,6 @@ function App() {
   return (
     <div className="min-h-screen bg-slate-50 flex font-sans">
       {isSidebarOpen && <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setIsSidebarOpen(false)} />}
-
       <aside className={`fixed lg:static inset-y-0 left-0 z-50 w-64 bg-white border-r border-slate-200 transform transition-transform duration-200 ease-in-out lg:transform-none ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} flex flex-col`}>
         <div className="p-6">
           <div className="flex items-center gap-3 mb-8 px-2">
@@ -200,38 +176,40 @@ function App() {
             <NavItem view="accounting" label="Contabilidad" icon={Calculator} requiredPlan="basic" />
             <NavItem view="access" label="Control Acceso" icon={ScanLine} requiredPlan="standard" />
             <NavItem view="inventory" label="Inventario" icon={Package} requiredPlan="full" />
-            
-            {/* Solo Plan Full ve Fidelización */}
             {hasFeature('full') && (
               <div className="pt-4 mt-4 border-t border-slate-100">
                   <div className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Fidelización</div>
                   <NavItem view="gamification" label="Gamificación" icon={Trophy} requiredPlan="full" />
-                  <NavItem view="workouts" label="Entrenamientos" icon={Activity} requiredPlan="full" />
+                  {/* Workouts actualizado con nuevas funciones */}
+                  {currentView === 'workouts' ? (
+                    <Workouts 
+                      clients={clients} 
+                      routines={routines} 
+                      addRoutine={addRoutine} 
+                      updateRoutine={updateRoutine} 
+                      deleteRoutine={deleteRoutine} 
+                      updateClient={updateClient} 
+                    />
+                  ) : (
+                    <NavItem view="workouts" label="Entrenamientos" icon={Activity} requiredPlan="full" />
+                  )}
               </div>
             )}
-            
             <div className="pt-4 mt-4 border-t border-slate-100">
                <div className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Marketing</div>
                <NavItem view="notifications" label="Cobranzas" icon={Bell} badge={debtorsCount} requiredPlan="basic" />
                <NavItem view="marketing" label="CRM & Rescate" icon={HeartPulse} requiredPlan="standard" />
             </div>
-            
             <div className="pt-4 mt-4 border-t border-slate-100">
                <div className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Sistema</div>
-               {/* IA Eliminada */}
                <NavItem view="settings" label="Configuración" icon={SettingsIcon} />
             </div>
           </nav>
         </div>
         <div className="mt-auto p-6 border-t border-slate-100">
           <button onClick={handleLogout} className="flex items-center gap-3 px-2 w-full text-left hover:bg-slate-50 p-2 rounded-lg transition-colors">
-             <div className="w-8 h-8 rounded-full bg-slate-900 flex items-center justify-center font-bold text-white text-xs">
-               {userRole === 'admin' ? 'AD' : 'IN'}
-             </div>
-             <div className="text-sm flex-1">
-               <p className="font-medium text-slate-900 capitalize">{userRole}</p>
-               <p className="text-slate-500 text-xs">Cerrar Sesión</p>
-             </div>
+             <div className="w-8 h-8 rounded-full bg-slate-900 flex items-center justify-center font-bold text-white text-xs">{userRole === 'admin' ? 'AD' : 'IN'}</div>
+             <div className="text-sm flex-1"><p className="font-medium text-slate-900 capitalize">{userRole}</p><p className="text-slate-500 text-xs">Cerrar Sesión</p></div>
              <LogOut size={16} className="text-slate-400" />
           </button>
         </div>
@@ -244,7 +222,6 @@ function App() {
             <span className="font-bold text-lg text-slate-800">{gymSettings.name}</span>
           </div>
         </header>
-
         <div className="flex-1 overflow-auto bg-slate-50/50">
           <div className="max-w-7xl mx-auto">
              {currentView === 'dashboard' && <Dashboard transactions={transactions} clients={clients} checkIns={checkIns} settings={gymSettings} />}
@@ -254,9 +231,9 @@ function App() {
              {currentView === 'access' && <AccessControl checkIns={checkIns} clients={clients} onCheckIn={handleCheckIn} onCheckOut={handleCheckOut} />}
              {currentView === 'notifications' && <Notifications clients={clients} />}
              {currentView === 'gamification' && <Gamification clients={clients} />}
-             {currentView === 'workouts' && <Workouts clients={clients} routines={routines} addRoutine={addRoutine} updateClient={updateClient} />}
+             {/* Workouts se renderiza arriba en el Sidebar para props, pero si está en main: */}
+             {currentView === 'workouts' && <Workouts clients={clients} routines={routines} addRoutine={addRoutine} updateRoutine={updateRoutine} deleteRoutine={deleteRoutine} updateClient={updateClient} />}
              {currentView === 'marketing' && <MarketingCRM clients={clients} />}
-             {/* Settings ahora maneja la gestión de staff y planes */}
              {currentView === 'settings' && <Settings settings={gymSettings} onUpdateSettings={handleUpdateSettings} staffList={staffList} addStaff={addStaff} deleteStaff={deleteStaff} updateStaffPassword={updateStaffPassword} />}
           </div>
         </div>
