@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-// ELIMINADOS: Brain, Sparkles
 import { LayoutDashboard, Users, Calculator, Menu, Dumbbell, ScanLine, Package, Bell, Trophy, HeartPulse, Activity, Settings as SettingsIcon, LogOut } from 'lucide-react';
 
 import { Dashboard } from './components/Dashboard';
@@ -15,16 +14,11 @@ import { Settings } from './components/Settings';
 import { ClientPortal } from './components/ClientPortal';
 import { Login } from './components/Login';
 
-// ELIMINADOS: PredictiveAnalytics, AIAssistant
-// import { PredictiveAnalytics } from './components/PredictiveAnalytics';
-// import { AIAssistant } from './components/AIAssistant';
-
 import { Client, Transaction, Product, CheckIn, GymSettings, MembershipStatus, TransactionType, Routine, UserRole, Staff, CompletedRoutine } from './types';
 
 import { db } from './firebase';
 import { collection, setDoc, doc, onSnapshot, query, orderBy, deleteDoc, updateDoc } from 'firebase/firestore';
 
-// ELIMINADOS: 'analytics' | 'assistant' del tipo View
 type View = 'dashboard' | 'clients' | 'accounting' | 'access' | 'inventory' | 'notifications' | 'gamification' | 'workouts' | 'marketing' | 'settings';
 
 function App() {
@@ -307,8 +301,6 @@ function App() {
               </div>
             )}
 
-            {/* SECCIÓN INTELLIGENCE ELIMINADA */}
-
             <div className="pt-4 mt-4 border-t border-slate-100"><div className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Marketing</div><NavItem view="notifications" label="Cobranzas" icon={Bell} badge={debtorsCount} requiredPlan="basic" /><NavItem view="marketing" label="CRM & Rescate" icon={HeartPulse} requiredPlan="standard" /></div>
             <div className="pt-4 mt-4 border-t border-slate-100"><div className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Sistema</div><NavItem view="settings" label="Configuración" icon={SettingsIcon} /></div>
           </nav>
@@ -331,8 +323,6 @@ function App() {
              {/* Pasamos settings para mensajes dinámicos */}
              {currentView === 'marketing' && <MarketingCRM clients={clients} settings={gymSettings} />}
              {currentView === 'settings' && <Settings settings={gymSettings} onUpdateSettings={handleUpdateSettings} staffList={staffList} addStaff={addStaff} deleteStaff={deleteStaff} updateStaffPassword={updateStaffPassword} />}
-             
-             {/* COMPONENTES IA ELIMINADOS DE LA RENDERIZACIÓN */}
           </div>
         </div>
       </main>
