@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { LayoutDashboard, Users, Calculator, Menu, Dumbbell, ScanLine, Package, Bell, Trophy, HeartPulse, Activity, Settings as SettingsIcon, LogOut, Calendar, Flame } from 'lucide-react';
 
+// Componentes
 import { Dashboard } from './components/Dashboard';
 import { Clients } from './components/Clients';
 import { Accounting } from './components/Accounting';
@@ -15,13 +16,16 @@ import { ClientPortal } from './components/ClientPortal';
 import { Login } from './components/Login';
 import { BookingsManager } from './components/BookingsManager';
 import { WODBuilder } from './components/WODBuilder';
+import { Whiteboard } from './components/Whiteboard'; // <--- NUEVO IMPORT
 
+// Tipos
 import { Client, Transaction, Product, CheckIn, GymSettings, MembershipStatus, TransactionType, Routine, UserRole, Staff, CompletedRoutine, ClassSession, WOD, WODScore } from './types';
 
+// Firebase
 import { db } from './firebase';
 import { collection, setDoc, doc, onSnapshot, query, orderBy, deleteDoc, updateDoc } from 'firebase/firestore';
 
-type View = 'dashboard' | 'clients' | 'accounting' | 'access' | 'inventory' | 'notifications' | 'gamification' | 'workouts' | 'marketing' | 'settings' | 'bookings' | 'wod_planning';
+type View = 'dashboard' | 'clients' | 'accounting' | 'access' | 'inventory' | 'notifications' | 'gamification' | 'workouts' | 'marketing' | 'settings' | 'bookings' | 'wod_planning' | 'whiteboard';
 
 function App() {
   // ESTADO DE SESIÓN
@@ -32,7 +36,7 @@ function App() {
   const [currentView, setCurrentView] = useState<View>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
-  // DATOS
+  // DATOS GENERALES
   const [clients, setClients] = useState<Client[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -40,9 +44,10 @@ function App() {
   const [routines, setRoutines] = useState<Routine[]>([]); 
   const [staffList, setStaffList] = useState<Staff[]>([]);
   
-  // NUEVOS DATOS MODO CROSSFIT
+  // DATOS MODO CROSSFIT
   const [classSessions, setClassSessions] = useState<ClassSession[]>([]);
   const [wods, setWods] = useState<WOD[]>([]);
+  const [wodScores, setWodScores] = useState<WODScore[]>([]); // <--- NUEVO ESTADO
   
   const [gymSettings, setGymSettings] = useState<GymSettings>({
     name: 'GymFlow Fitness',
@@ -56,6 +61,7 @@ function App() {
   useEffect(() => {
     if (!userRole) return;
 
+    // Colecciones existentes
     const qClients = query(collection(db, 'clients'), orderBy('name'));
     const unsubClients = onSnapshot(qClients, (s) => setClients(s.docs.map(d => ({ ...d.data(), id: d.id } as Client))));
 
@@ -74,12 +80,15 @@ function App() {
     const qStaff = query(collection(db, 'staff'));
     const unsubStaff = onSnapshot(qStaff, (s) => setStaffList(s.docs.map(d => ({ ...d.data(), id: d.id } as Staff))));
 
-    // --- NUEVAS SUSCRIPCIONES ---
+    // --- NUEVAS SUSCRIPCIONES (CrossFit) ---
     const qClasses = query(collection(db, 'classes'));
     const unsubClasses = onSnapshot(qClasses, (s) => setClassSessions(s.docs.map(d => ({ ...d.data(), id: d.id } as ClassSession))));
 
     const qWods = query(collection(db, 'wods'));
     const unsubWods = onSnapshot(qWods, (s) => setWods(s.docs.map(d => ({ ...d.data(), id: d.id } as WOD))));
+
+    const qScores = query(collection(db, 'wod_scores')); // <--- NUEVA SUSCRIPCION
+    const unsubScores = onSnapshot(qScores, (s) => setWodScores(s.docs.map(d => ({ ...d.data(), id: d.id } as WODScore))));
 
     const unsubSettings = onSnapshot(doc(db, 'settings', 'config'), (doc) => {
       if (doc.exists()) {
@@ -89,7 +98,7 @@ function App() {
     });
 
     return () => {
-      unsubClients(); unsubTrans(); unsubProds(); unsubCheck(); unsubRout(); unsubStaff(); unsubSettings(); unsubClasses(); unsubWods();
+      unsubClients(); unsubTrans(); unsubProds(); unsubCheck(); unsubRout(); unsubStaff(); unsubSettings(); unsubClasses(); unsubWods(); unsubScores();
     };
   }, [userRole]);
 
@@ -103,6 +112,61 @@ function App() {
     const roleLabel = userRole === 'admin' ? 'Admin' : userRole === 'instructor' ? 'Instructor' : 'Cliente';
     return `${currentUser.name} (${roleLabel})`;
   };
+
+  // --- PROCESO DE COBRO AUTOMÁTICO ---
+  useEffect(() => {
+    if (clients.length === 0) return;
+
+    const checkMemberships = async () => {
+      const today = new Date();
+      today.setHours(0,0,0,0);
+      
+      clients.forEach(async (client) => {
+        if (client.status !== MembershipStatus.ACTIVE) return;
+
+        const lastPaymentStr = client.lastMembershipPayment || client.joinDate;
+        const lastPaymentDate = new Date(lastPaymentStr);
+        lastPaymentDate.setHours(0,0,0,0);
+        
+        const nextPaymentDate = new Date(lastPaymentDate);
+        nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 1);
+
+        if (today >= nextPaymentDate) {
+          const amount = getPlanPrice(client.plan);
+
+          if (amount && amount > 0) {
+            console.log(`Renovando cuota mensual a ${client.name}: $${amount}`);
+
+            const newTransaction: Transaction = {
+              id: crypto.randomUUID(),
+              clientId: client.id,
+              clientName: client.name,
+              description: `Renovación Cuota Automática`,
+              amount: amount,
+              date: new Date().toISOString().split('T')[0],
+              type: TransactionType.INCOME,
+              category: 'Cuota',
+              createdBy: 'Sistema Automático'
+            };
+            await setDoc(doc(db, 'transactions', newTransaction.id), newTransaction);
+
+            const newBalance = client.balance - amount;
+            await updateDoc(doc(db, 'clients', client.id), {
+              balance: newBalance,
+              lastMembershipPayment: nextPaymentDate.toISOString().split('T')[0]
+            });
+          }
+        }
+      });
+    };
+
+    const timer = setInterval(() => {
+      checkMemberships();
+    }, 10000); 
+
+    return () => clearInterval(timer);
+  }, [clients, gymSettings.membershipPrices]); 
+
 
   // --- Funciones de Acción ---
   const addClient = async (c: Client) => {
@@ -153,14 +217,12 @@ function App() {
   const addWod = async (w: WOD) => await setDoc(doc(db, 'wods', w.id), w);
   const deleteWod = async (id: string) => { if(window.confirm('¿Borrar WOD?')) await deleteDoc(doc(db, 'wods', id)); };
 
-  // Funciones para el Portal de Cliente (Reservas y Scores)
+  // Funciones para el Portal de Cliente
   const handleBookClass = async (classId: string) => {
       if (!currentUser || userRole !== 'client') return;
       const session = classSessions.find(s => s.id === classId);
       if (!session) return;
-      
-      // Validación simple de capacidad
-      if (session.attendees.includes(currentUser.id)) return; // Ya está anotado
+      if (session.attendees.includes(currentUser.id)) return;
       if (session.attendees.length >= session.capacity) { alert('Clase llena'); return; }
 
       const updatedAttendees = [...session.attendees, currentUser.id];
@@ -180,7 +242,6 @@ function App() {
 
   const handleSaveWodScore = async (score: WODScore) => {
       await setDoc(doc(db, 'wod_scores', score.id), score);
-      // Opcional: Sumar puntos extra por registrar WOD
       handleCompleteSession(15); 
   };
 
@@ -205,12 +266,13 @@ function App() {
 
   const hasAccess = (view: View) => {
     if (userRole === 'admin') return true;
-    if (userRole === 'instructor') return ['dashboard', 'clients', 'access', 'workouts', 'bookings', 'wod_planning'].includes(view);
+    if (userRole === 'instructor') return ['dashboard', 'clients', 'access', 'workouts', 'bookings', 'wod_planning', 'whiteboard'].includes(view);
     return false; 
   };
 
   const handleLogout = () => { setUserRole(null); setCurrentUser(undefined); setCurrentView('dashboard'); };
   
+  // LOGICA DE LICENCIA / PLAN
   const hasFeature = (feature: 'basic' | 'standard' | 'full' | 'crossfit') => { 
       if (gymSettings.plan === 'CrossFit') return true;
       if (feature === 'crossfit') return false; 
@@ -222,6 +284,7 @@ function App() {
 
   if (!userRole) return <Login onLogin={(role, data) => { setUserRole(role); if (data) setCurrentUser(data); }} />;
   
+  // VISTA DE CLIENTE
   if (userRole === 'client' && currentUser) return (
       <ClientPortal 
           client={currentUser as Client} 
@@ -239,6 +302,8 @@ function App() {
   );
 
   const debtorsCount = clients.filter(c => c.balance < 0).length;
+  
+  // Componente de Navegación
   const NavItem = ({ view, label, icon: Icon, badge, requiredPlan }: { view: View, label: string, icon: any, badge?: number, requiredPlan?: 'basic' | 'standard' | 'full' | 'crossfit' }) => {
     if (!hasAccess(view)) return null; 
     if (requiredPlan && !hasFeature(requiredPlan)) return null;
@@ -253,6 +318,8 @@ function App() {
   return (
     <div className="min-h-screen bg-slate-50 flex font-sans">
       {isSidebarOpen && <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setIsSidebarOpen(false)} />}
+      
+      {/* SIDEBAR */}
       <aside className={`fixed lg:static inset-y-0 left-0 z-50 w-64 bg-white border-r border-slate-200 transform transition-transform duration-200 ease-in-out lg:transform-none ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} flex flex-col`}>
         <div className="p-6">
           <div className="flex items-center gap-3 mb-8 px-2"><div className="bg-blue-600 p-2 rounded-lg text-white shadow-lg shadow-blue-200 overflow-hidden">{gymSettings.logoUrl ? <img src={gymSettings.logoUrl} className="w-5 h-5 object-cover" alt="" /> : <Dumbbell size={20} strokeWidth={3} />}</div><div><h1 className="text-base font-bold text-slate-900 tracking-tight leading-none truncate max-w-[140px]">{gymSettings.name}</h1><span className="text-[10px] text-slate-400 uppercase font-bold">{userRole === 'admin' ? 'Administrador' : 'Instructor'}</span></div></div>
@@ -263,16 +330,19 @@ function App() {
             <NavItem view="accounting" label="Contabilidad" icon={Calculator} requiredPlan="basic" />
             <NavItem view="access" label="Control Acceso" icon={ScanLine} requiredPlan="standard" />
             
+            {/* SECCIÓN CROSSFIT */}
             {hasFeature('crossfit') && (
                 <div className="pt-4 mt-4 border-t border-slate-100 bg-orange-50/50 rounded-xl p-2">
                     <div className="px-2 text-[10px] font-bold text-orange-600 uppercase tracking-widest mb-2">Modo Box</div>
                     <NavItem view="bookings" label="Agenda / Turnos" icon={Calendar} requiredPlan="crossfit" />
                     <NavItem view="wod_planning" label="Programar WOD" icon={Flame} requiredPlan="crossfit" />
+                    <NavItem view="whiteboard" label="Pizarra / Leaderboard" icon={Trophy} requiredPlan="crossfit" />
                 </div>
             )}
             
             <NavItem view="inventory" label="Inventario" icon={Package} requiredPlan="full" />
             
+            {/* SECCIÓN GYM TRADICIONAL */}
             {!hasFeature('crossfit') && hasFeature('full') && (
               <div className="pt-4 mt-4 border-t border-slate-100">
                 <div className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Fidelización</div>
@@ -281,9 +351,10 @@ function App() {
               </div>
             )}
             
-            {hasFeature('crossfit') && (
+            {/* Leaderboard solo para Gym Tradicional (el de crossfit está arriba) */}
+            {hasFeature('full') && !hasFeature('crossfit') && (
                <div className="pt-2">
-                   <NavItem view="gamification" label="Leaderboard" icon={Trophy} requiredPlan="full" />
+                   {/* Ya incluido en el bloque anterior */}
                </div>
             )}
 
@@ -293,6 +364,8 @@ function App() {
         </div>
         <div className="mt-auto p-6 border-t border-slate-100"><button onClick={handleLogout} className="flex items-center gap-3 px-2 w-full text-left hover:bg-slate-50 p-2 rounded-lg transition-colors"><div className="w-8 h-8 rounded-full bg-slate-900 flex items-center justify-center font-bold text-white text-xs">{userRole === 'admin' ? 'AD' : 'IN'}</div><div className="text-sm flex-1"><p className="font-medium text-slate-900 capitalize">{userRole}</p><p className="text-slate-500 text-xs">Cerrar Sesión</p></div><LogOut size={16} className="text-slate-400" /></button></div>
       </aside>
+
+      {/* CONTENIDO PRINCIPAL */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <header className="bg-white border-b border-slate-200 lg:hidden p-4 flex items-center justify-between sticky top-0 z-30"><div className="flex items-center gap-3"><button onClick={() => setIsSidebarOpen(true)} className="text-slate-600"><Menu size={24} /></button><span className="font-bold text-lg text-slate-800">{gymSettings.name}</span></div></header>
         <div className="flex-1 overflow-auto bg-slate-50/50">
@@ -307,8 +380,11 @@ function App() {
              {currentView === 'workouts' && <Workouts clients={clients} routines={routines} addRoutine={addRoutine} updateRoutine={updateRoutine} deleteRoutine={deleteRoutine} updateClient={updateClient} />}
              {currentView === 'marketing' && <MarketingCRM clients={clients} settings={gymSettings} />}
              {currentView === 'settings' && <Settings settings={gymSettings} onUpdateSettings={handleUpdateSettings} staffList={staffList} addStaff={addStaff} deleteStaff={deleteStaff} updateStaffPassword={updateStaffPassword} />}
+             
+             {/* VISTAS CROSSFIT */}
              {currentView === 'bookings' && <BookingsManager sessions={classSessions} staffList={staffList} addSession={addSession} deleteSession={deleteSession} />}
              {currentView === 'wod_planning' && <WODBuilder wods={wods} addWod={addWod} deleteWod={deleteWod} />}
+             {currentView === 'whiteboard' && <Whiteboard wods={wods} scores={wodScores} clients={clients} />}
           </div>
         </div>
       </main>
