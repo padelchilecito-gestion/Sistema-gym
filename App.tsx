@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, Users, Calculator, Menu, Dumbbell, ScanLine, Package, Bell, Trophy, HeartPulse, Activity, Settings as SettingsIcon, Monitor, Smartphone, LogOut, Brain, Sparkles } from 'lucide-react';
+// ELIMINADOS: Brain, Sparkles
+import { LayoutDashboard, Users, Calculator, Menu, Dumbbell, ScanLine, Package, Bell, Trophy, HeartPulse, Activity, Settings as SettingsIcon, LogOut } from 'lucide-react';
+
 import { Dashboard } from './components/Dashboard';
 import { Clients } from './components/Clients';
 import { Accounting } from './components/Accounting';
@@ -12,14 +14,18 @@ import { MarketingCRM } from './components/MarketingCRM';
 import { Settings } from './components/Settings';
 import { ClientPortal } from './components/ClientPortal';
 import { Login } from './components/Login';
-import { PredictiveAnalytics } from './components/PredictiveAnalytics';
-import { AIAssistant } from './components/AIAssistant';
+
+// ELIMINADOS: PredictiveAnalytics, AIAssistant
+// import { PredictiveAnalytics } from './components/PredictiveAnalytics';
+// import { AIAssistant } from './components/AIAssistant';
+
 import { Client, Transaction, Product, CheckIn, GymSettings, MembershipStatus, TransactionType, Routine, UserRole, Staff, CompletedRoutine } from './types';
 
 import { db } from './firebase';
 import { collection, setDoc, doc, onSnapshot, query, orderBy, deleteDoc, updateDoc } from 'firebase/firestore';
 
-type View = 'dashboard' | 'clients' | 'accounting' | 'access' | 'inventory' | 'notifications' | 'gamification' | 'workouts' | 'marketing' | 'settings' | 'analytics' | 'assistant';
+// ELIMINADOS: 'analytics' | 'assistant' del tipo View
+type View = 'dashboard' | 'clients' | 'accounting' | 'access' | 'inventory' | 'notifications' | 'gamification' | 'workouts' | 'marketing' | 'settings';
 
 function App() {
   // ESTADO DE SESIÓN
@@ -214,7 +220,7 @@ function App() {
   const deleteStaff = async (id: string) => { if(window.confirm('¿Borrar usuario?')) await deleteDoc(doc(db, 'staff', id)); };
   const updateStaffPassword = async (id: string, pass: string) => await updateDoc(doc(db, 'staff', id), { password: pass });
 
-  // MODIFICADO: Guardar historial de rutinas (Top 7)
+  // Guardar historial de rutinas (Top 7)
   const handleCompleteSession = async (pointsEarned: number) => {
     if (!currentUser || userRole !== 'client') return;
     const clientUser = currentUser as Client;
@@ -243,7 +249,7 @@ function App() {
         points: (clientUser.points || 0) + pointsEarned, 
         streak: newStreak, 
         lastVisit: new Date().toISOString(),
-        routineHistory: updatedHistory // GUARDAMOS HISTORIAL
+        routineHistory: updatedHistory 
     };
     
     await updateDoc(doc(db, 'clients', clientUser.id), updates);
@@ -252,7 +258,7 @@ function App() {
 
   const hasAccess = (view: View) => {
     if (userRole === 'admin') return true;
-    if (userRole === 'instructor') return ['dashboard', 'clients', 'access', 'workouts', 'assistant'].includes(view);
+    if (userRole === 'instructor') return ['dashboard', 'clients', 'access', 'workouts'].includes(view);
     return false; 
   };
 
@@ -301,12 +307,7 @@ function App() {
               </div>
             )}
 
-            {/* SECCIÓN INTELLIGENCE (NUEVA) */}
-            <div className="pt-4 mt-4 border-t border-slate-100">
-                <div className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Inteligencia</div>
-                <NavItem view="analytics" label="Predicciones IA" icon={Brain} requiredPlan="full" />
-                <NavItem view="assistant" label="Asistente Smart" icon={Sparkles} requiredPlan="standard" />
-            </div>
+            {/* SECCIÓN INTELLIGENCE ELIMINADA */}
 
             <div className="pt-4 mt-4 border-t border-slate-100"><div className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Marketing</div><NavItem view="notifications" label="Cobranzas" icon={Bell} badge={debtorsCount} requiredPlan="basic" /><NavItem view="marketing" label="CRM & Rescate" icon={HeartPulse} requiredPlan="standard" /></div>
             <div className="pt-4 mt-4 border-t border-slate-100"><div className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Sistema</div><NavItem view="settings" label="Configuración" icon={SettingsIcon} /></div>
@@ -331,9 +332,7 @@ function App() {
              {currentView === 'marketing' && <MarketingCRM clients={clients} settings={gymSettings} />}
              {currentView === 'settings' && <Settings settings={gymSettings} onUpdateSettings={handleUpdateSettings} staffList={staffList} addStaff={addStaff} deleteStaff={deleteStaff} updateStaffPassword={updateStaffPassword} />}
              
-             {/* Componentes de IA conectados */}
-             {currentView === 'analytics' && <PredictiveAnalytics transactions={transactions} checkIns={checkIns} />}
-             {currentView === 'assistant' && <AIAssistant transactions={transactions} clients={clients} />}
+             {/* COMPONENTES IA ELIMINADOS DE LA RENDERIZACIÓN */}
           </div>
         </div>
       </main>
