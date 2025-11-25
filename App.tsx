@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, Users, Calculator, Bot, Menu, Dumbbell, ScanLine, Package, Bell, Trophy, HeartPulse, Activity, Lightbulb, Settings as SettingsIcon, Monitor, Smartphone, LogOut } from 'lucide-react';
+import { LayoutDashboard, Users, Calculator, Bot, Menu, Dumbbell, ScanLine, Package, Bell, Trophy, HeartPulse, Activity, Settings as SettingsIcon, Monitor, Smartphone, LogOut } from 'lucide-react';
 import { Dashboard } from './components/Dashboard';
 import { Clients } from './components/Clients';
 import { Accounting } from './components/Accounting';
@@ -17,11 +17,14 @@ import { Client, Transaction, Product, CheckIn, GymSettings, MembershipStatus, T
 import { db } from './firebase';
 import { collection, setDoc, doc, onSnapshot, query, orderBy, deleteDoc, updateDoc } from 'firebase/firestore';
 
-type View = 'dashboard' | 'clients' | 'accounting' | 'ai' | 'access' | 'inventory' | 'notifications' | 'gamification' | 'workouts' | 'marketing' | 'settings' | 'predictive';
+type View = 'dashboard' | 'clients' | 'accounting' | 'ai' | 'access' | 'inventory' | 'notifications' | 'gamification' | 'workouts' | 'marketing' | 'settings';
 
 function App() {
+  // ESTADO DE SESIÓN
   const [userRole, setUserRole] = useState<UserRole | null>(null);
-  const [currentUser, setCurrentUser] = useState<Client | undefined>(undefined);
+  // Ahora currentUser puede ser Client O Staff para poder guardar el nombre del instructor
+  const [currentUser, setCurrentUser] = useState<Client | Staff | undefined>(undefined);
+
   const [currentView, setCurrentView] = useState<View>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
@@ -42,6 +45,7 @@ function App() {
 
   useEffect(() => {
     if (!userRole) return;
+    
     const qClients = query(collection(db, 'clients'), orderBy('name'));
     const unsubClients = onSnapshot(qClients, (s) => setClients(s.docs.map(d => ({ ...d.data(), id: d.id } as Client))));
     const qTrans = query(collection(db, 'transactions'), orderBy('date', 'desc'));
@@ -68,6 +72,13 @@ function App() {
     return prices[planCode] || 0;
   };
 
+  // Helper para obtener la firma del usuario actual
+  const getCurrentUserSignature = () => {
+    if (!currentUser) return 'Sistema';
+    const roleLabel = userRole === 'admin' ? 'Admin' : userRole === 'instructor' ? 'Instructor' : 'Cliente';
+    return `${currentUser.name} (${roleLabel})`;
+  };
+
   // --- PROCESO DE COBRO AUTOMÁTICO ---
   useEffect(() => {
     if (clients.length === 0) return;
@@ -79,39 +90,33 @@ function App() {
       clients.forEach(async (client) => {
         if (client.status !== MembershipStatus.ACTIVE) return;
 
-        // Usamos la fecha del último pago (o la de ingreso si no hay pago previo)
         const lastPaymentStr = client.lastMembershipPayment || client.joinDate;
         const lastPaymentDate = new Date(lastPaymentStr);
-        lastPaymentDate.setHours(0,0,0,0); // Normalizar
+        lastPaymentDate.setHours(0,0,0,0);
         
-        // Calculamos el próximo vencimiento (1 mes después)
         const nextPaymentDate = new Date(lastPaymentDate);
         nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 1);
 
-        // Si hoy ya superamos la fecha de vencimiento, cobramos
         if (today >= nextPaymentDate) {
           const amount = getPlanPrice(client.plan);
 
           if (amount && amount > 0) {
             console.log(`Renovando cuota mensual a ${client.name}: $${amount}`);
 
-            // 1. Crear Transacción
             const newTransaction: Transaction = {
               id: crypto.randomUUID(),
               clientId: client.id,
+              clientName: client.name, // GUARDAMOS NOMBRE
               description: `Renovación Cuota Automática`,
               amount: amount,
               date: new Date().toISOString().split('T')[0],
               type: TransactionType.INCOME,
-              category: 'Cuota'
+              category: 'Cuota',
+              createdBy: 'Sistema Automático' // FIRMA AUTOMÁTICA
             };
             await setDoc(doc(db, 'transactions', newTransaction.id), newTransaction);
 
-            // 2. Actualizar Cliente (Restar saldo y avanzar fecha de pago)
             const newBalance = client.balance - amount;
-            
-            // Guardamos nextPaymentDate como la nueva fecha de último pago para mantener el ciclo
-            // Ej: Si pagó el 5/Enero, next es 5/Febrero. Guardamos 5/Febrero para que el próximo sea 5/Marzo.
             await updateDoc(doc(db, 'clients', client.id), {
               balance: newBalance,
               lastMembershipPayment: nextPaymentDate.toISOString().split('T')[0]
@@ -123,7 +128,7 @@ function App() {
 
     const timer = setInterval(() => {
       checkMemberships();
-    }, 10000); // Chequeo cada 10 seg (en producción podría ser mayor)
+    }, 10000); 
 
     return () => clearInterval(timer);
   }, [clients, gymSettings.membershipPrices]); 
@@ -132,11 +137,8 @@ function App() {
   // --- Funciones de Acción ---
   const addClient = async (c: Client) => {
     const price = getPlanPrice(c.plan);
-    // Descontamos el precio del plan del saldo inicial cargado
     const finalBalance = c.balance - price;
     
-    // IMPORTANTE: lastMembershipPayment se setea a la FECHA DE INGRESO (o la que elija el admin)
-    // Así el sistema sabrá contar 1 mes desde esa fecha exacta.
     const clientWithPayment = { 
         ...c, 
         balance: finalBalance, 
@@ -145,27 +147,48 @@ function App() {
     
     await setDoc(doc(db, 'clients', c.id), clientWithPayment);
     
-    // Registramos el ingreso inicial si hubo costo
     if (price > 0) {
         await setDoc(doc(db, 'transactions', crypto.randomUUID()), { 
             id: crypto.randomUUID(), 
             clientId: c.id, 
+            clientName: c.name, // GUARDAMOS NOMBRE
             description: `Pago Inicial - Alta`, 
             amount: price, 
-            date: new Date().toISOString().split('T')[0], // Fecha de registro contable es HOY
+            date: new Date().toISOString().split('T')[0],
             type: TransactionType.INCOME, 
-            category: 'Cuota' 
+            category: 'Cuota',
+            createdBy: getCurrentUserSignature() // FIRMA
         });
     }
   };
 
   const updateClient = async (id: string, data: Partial<Client>) => await updateDoc(doc(db, 'clients', id), data);
   const deleteClient = async (id: string) => { if(window.confirm('¿Seguro?')) await deleteDoc(doc(db, 'clients', id)); };
+  
   const registerPayment = async (client: Client, amount: number, desc: string) => {
-    await setDoc(doc(db, 'transactions', crypto.randomUUID()), { id: crypto.randomUUID(), clientId: client.id, description: desc, amount, date: new Date().toISOString().split('T')[0], type: TransactionType.INCOME, category: 'Cuota' });
+    await setDoc(doc(db, 'transactions', crypto.randomUUID()), { 
+        id: crypto.randomUUID(), 
+        clientId: client.id, 
+        clientName: client.name, // GUARDAMOS NOMBRE
+        description: desc, 
+        amount, 
+        date: new Date().toISOString().split('T')[0], 
+        type: TransactionType.INCOME, 
+        category: 'Cuota',
+        createdBy: getCurrentUserSignature() // FIRMA
+    });
     await updateDoc(doc(db, 'clients', client.id), { balance: client.balance + amount });
   };
-  const addTransaction = async (t: Transaction) => await setDoc(doc(db, 'transactions', t.id), t);
+
+  const addTransaction = async (t: Transaction) => {
+      // Inyectamos la firma del usuario
+      const transactionWithUser = {
+          ...t,
+          createdBy: getCurrentUserSignature()
+      };
+      await setDoc(doc(db, 'transactions', t.id), transactionWithUser);
+  };
+
   const updateTransaction = async (id: string, d: Partial<Transaction>) => await updateDoc(doc(db, 'transactions', id), d);
   const deleteTransaction = async (id: string) => { if(window.confirm('¿Seguro?')) await deleteDoc(doc(db, 'transactions', id)); };
   const addProduct = async (p: Product) => await setDoc(doc(db, 'products', p.id), p);
@@ -182,28 +205,38 @@ function App() {
   const updateStaffPassword = async (id: string, pass: string) => await updateDoc(doc(db, 'staff', id), { password: pass });
 
   const handleCompleteSession = async (pointsEarned: number) => {
-    if (!currentUser) return;
-    const lastVisit = new Date(currentUser.lastVisit);
+    if (!currentUser || userRole !== 'client') return;
+    const clientUser = currentUser as Client; // Type casting seguro
+    
+    const lastVisit = new Date(clientUser.lastVisit);
     const today = new Date();
     const diffTime = Math.abs(today.getTime() - lastVisit.getTime());
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    let newStreak = currentUser.streak;
+    
+    let newStreak = clientUser.streak;
     if (diffDays === 1) newStreak += 1; else if (diffDays > 1) newStreak = 1;
-    const updates = { points: (currentUser.points || 0) + pointsEarned, streak: newStreak, lastVisit: new Date().toISOString() };
-    await updateDoc(doc(db, 'clients', currentUser.id), updates);
-    setCurrentUser({ ...currentUser, ...updates });
+    
+    const updates = { points: (clientUser.points || 0) + pointsEarned, streak: newStreak, lastVisit: new Date().toISOString() };
+    await updateDoc(doc(db, 'clients', clientUser.id), updates);
+    setCurrentUser({ ...clientUser, ...updates });
   };
 
   const hasAccess = (view: View) => { if (userRole === 'admin') return true; if (userRole === 'instructor') return ['dashboard', 'clients', 'access', 'workouts'].includes(view); return false; };
   const hasFeature = (feature: 'basic' | 'standard' | 'full') => { if (gymSettings.plan === 'Full') return true; if (gymSettings.plan === 'Standard' && feature !== 'full') return true; if (gymSettings.plan === 'Basic' && feature === 'basic') return true; return false; };
   const handleLogout = () => { setUserRole(null); setCurrentUser(undefined); setCurrentView('dashboard'); };
 
-  if (!userRole) return <Login onLogin={(role, data) => { setUserRole(role); if (role === 'client' && data) setCurrentUser(data as Client); }} />;
-  if (userRole === 'client' && currentUser) return <ClientPortal client={currentUser} settings={gymSettings} checkIns={checkIns} routines={routines} onLogout={handleLogout} onCompleteSession={handleCompleteSession} />;
+  if (!userRole) return <Login onLogin={(role, data) => { 
+      setUserRole(role); 
+      // Guardamos los datos del usuario sea quien sea
+      if (data) setCurrentUser(data); 
+  }} />;
+  
+  if (userRole === 'client' && currentUser) return <ClientPortal client={currentUser as Client} settings={gymSettings} checkIns={checkIns} routines={routines} onLogout={handleLogout} onCompleteSession={handleCompleteSession} />;
 
   const debtorsCount = clients.filter(c => c.balance < 0).length;
   const NavItem = ({ view, label, icon: Icon, badge, requiredPlan }: { view: View, label: string, icon: any, badge?: number, requiredPlan?: 'basic' | 'standard' | 'full' }) => {
-    if (!hasAccess(view)) return null; if (requiredPlan && !hasFeature(requiredPlan)) return null;
+    if (!hasAccess(view)) return null; 
+    if (requiredPlan && !hasFeature(requiredPlan)) return null;
     return <button onClick={() => { setCurrentView(view); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-colors font-medium relative ${currentView === view ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'}`}><Icon size={18} /> <span className="text-sm">{label}</span>{badge !== undefined && badge > 0 && <span className="absolute right-4 top-1/2 -translate-y-1/2 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{badge}</span>}</button>;
   };
 
