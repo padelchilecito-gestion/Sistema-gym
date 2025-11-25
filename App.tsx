@@ -1,6 +1,5 @@
-// ... (Imports anteriores: LayoutDashboard, Users, etc...)
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, Users, Calculator, Menu, Dumbbell, ScanLine, Package, Bell, Trophy, HeartPulse, Activity, Settings as SettingsIcon, Monitor, Smartphone, LogOut } from 'lucide-react';
+import { LayoutDashboard, Users, Calculator, Bot, Menu, Dumbbell, ScanLine, Package, Bell, Trophy, HeartPulse, Activity, Lightbulb, Settings as SettingsIcon, Monitor, Smartphone, LogOut } from 'lucide-react';
 import { Dashboard } from './components/Dashboard';
 import { Clients } from './components/Clients';
 import { Accounting } from './components/Accounting';
@@ -18,7 +17,7 @@ import { Client, Transaction, Product, CheckIn, GymSettings, MembershipStatus, T
 import { db } from './firebase';
 import { collection, setDoc, doc, onSnapshot, query, orderBy, deleteDoc, updateDoc } from 'firebase/firestore';
 
-type View = 'dashboard' | 'clients' | 'accounting' | 'access' | 'inventory' | 'notifications' | 'gamification' | 'workouts' | 'marketing' | 'settings';
+type View = 'dashboard' | 'clients' | 'accounting' | 'ai' | 'access' | 'inventory' | 'notifications' | 'gamification' | 'workouts' | 'marketing' | 'settings' | 'predictive';
 
 function App() {
   const [userRole, setUserRole] = useState<UserRole | null>(null);
@@ -38,12 +37,11 @@ function App() {
     logoUrl: '',
     plan: 'Full',
     membershipPrices: { basic: 0, intermediate: 0, full: 0 },
-    rewards: [] // Inicializar premios
+    rewards: []
   });
 
   useEffect(() => {
     if (!userRole) return;
-    // ... (Queries anteriores iguales) ...
     const qClients = query(collection(db, 'clients'), orderBy('name'));
     const unsubClients = onSnapshot(qClients, (s) => setClients(s.docs.map(d => ({ ...d.data(), id: d.id } as Client))));
     const qTrans = query(collection(db, 'transactions'), orderBy('date', 'desc'));
@@ -70,14 +68,97 @@ function App() {
     return prices[planCode] || 0;
   };
 
-  // Funciones CRUD (Igual que antes)
+  // --- PROCESO DE COBRO AUTOMÁTICO ---
+  useEffect(() => {
+    if (clients.length === 0) return;
+
+    const checkMemberships = async () => {
+      const today = new Date();
+      today.setHours(0,0,0,0);
+      
+      clients.forEach(async (client) => {
+        if (client.status !== MembershipStatus.ACTIVE) return;
+
+        // Usamos la fecha del último pago (o la de ingreso si no hay pago previo)
+        const lastPaymentStr = client.lastMembershipPayment || client.joinDate;
+        const lastPaymentDate = new Date(lastPaymentStr);
+        lastPaymentDate.setHours(0,0,0,0); // Normalizar
+        
+        // Calculamos el próximo vencimiento (1 mes después)
+        const nextPaymentDate = new Date(lastPaymentDate);
+        nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 1);
+
+        // Si hoy ya superamos la fecha de vencimiento, cobramos
+        if (today >= nextPaymentDate) {
+          const amount = getPlanPrice(client.plan);
+
+          if (amount && amount > 0) {
+            console.log(`Renovando cuota mensual a ${client.name}: $${amount}`);
+
+            // 1. Crear Transacción
+            const newTransaction: Transaction = {
+              id: crypto.randomUUID(),
+              clientId: client.id,
+              description: `Renovación Cuota Automática`,
+              amount: amount,
+              date: new Date().toISOString().split('T')[0],
+              type: TransactionType.INCOME,
+              category: 'Cuota'
+            };
+            await setDoc(doc(db, 'transactions', newTransaction.id), newTransaction);
+
+            // 2. Actualizar Cliente (Restar saldo y avanzar fecha de pago)
+            const newBalance = client.balance - amount;
+            
+            // Guardamos nextPaymentDate como la nueva fecha de último pago para mantener el ciclo
+            // Ej: Si pagó el 5/Enero, next es 5/Febrero. Guardamos 5/Febrero para que el próximo sea 5/Marzo.
+            await updateDoc(doc(db, 'clients', client.id), {
+              balance: newBalance,
+              lastMembershipPayment: nextPaymentDate.toISOString().split('T')[0]
+            });
+          }
+        }
+      });
+    };
+
+    const timer = setInterval(() => {
+      checkMemberships();
+    }, 10000); // Chequeo cada 10 seg (en producción podría ser mayor)
+
+    return () => clearInterval(timer);
+  }, [clients, gymSettings.membershipPrices]); 
+
+
+  // --- Funciones de Acción ---
   const addClient = async (c: Client) => {
     const price = getPlanPrice(c.plan);
+    // Descontamos el precio del plan del saldo inicial cargado
     const finalBalance = c.balance - price;
-    const clientWithPayment = { ...c, balance: finalBalance, lastMembershipPayment: new Date().toISOString().split('T')[0] };
+    
+    // IMPORTANTE: lastMembershipPayment se setea a la FECHA DE INGRESO (o la que elija el admin)
+    // Así el sistema sabrá contar 1 mes desde esa fecha exacta.
+    const clientWithPayment = { 
+        ...c, 
+        balance: finalBalance, 
+        lastMembershipPayment: c.joinDate 
+    };
+    
     await setDoc(doc(db, 'clients', c.id), clientWithPayment);
-    if (price > 0) await setDoc(doc(db, 'transactions', crypto.randomUUID()), { id: crypto.randomUUID(), clientId: c.id, description: `Pago Inicial - Alta`, amount: price, date: new Date().toISOString().split('T')[0], type: TransactionType.INCOME, category: 'Cuota' });
+    
+    // Registramos el ingreso inicial si hubo costo
+    if (price > 0) {
+        await setDoc(doc(db, 'transactions', crypto.randomUUID()), { 
+            id: crypto.randomUUID(), 
+            clientId: c.id, 
+            description: `Pago Inicial - Alta`, 
+            amount: price, 
+            date: new Date().toISOString().split('T')[0], // Fecha de registro contable es HOY
+            type: TransactionType.INCOME, 
+            category: 'Cuota' 
+        });
+    }
   };
+
   const updateClient = async (id: string, data: Partial<Client>) => await updateDoc(doc(db, 'clients', id), data);
   const deleteClient = async (id: string) => { if(window.confirm('¿Seguro?')) await deleteDoc(doc(db, 'clients', id)); };
   const registerPayment = async (client: Client, amount: number, desc: string) => {
@@ -100,39 +181,20 @@ function App() {
   const deleteStaff = async (id: string) => { if(window.confirm('¿Borrar usuario?')) await deleteDoc(doc(db, 'staff', id)); };
   const updateStaffPassword = async (id: string, pass: string) => await updateDoc(doc(db, 'staff', id), { password: pass });
 
-  // NUEVO: Completar Sesión (Sumar Puntos y Racha)
   const handleCompleteSession = async (pointsEarned: number) => {
     if (!currentUser) return;
-    
-    // Calcular nueva racha
     const lastVisit = new Date(currentUser.lastVisit);
     const today = new Date();
     const diffTime = Math.abs(today.getTime() - lastVisit.getTime());
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    
     let newStreak = currentUser.streak;
-    // Si la última visita fue ayer (aprox 1 día), suma racha. Si fue hoy, mantiene. Si fue antes, reinicia.
-    if (diffDays === 1) newStreak += 1;
-    else if (diffDays > 1) newStreak = 1;
-
-    // Actualizar Cliente
-    const updates = {
-        points: (currentUser.points || 0) + pointsEarned,
-        streak: newStreak,
-        lastVisit: new Date().toISOString()
-    };
-    
+    if (diffDays === 1) newStreak += 1; else if (diffDays > 1) newStreak = 1;
+    const updates = { points: (currentUser.points || 0) + pointsEarned, streak: newStreak, lastVisit: new Date().toISOString() };
     await updateDoc(doc(db, 'clients', currentUser.id), updates);
-    
-    // Actualizar estado local para reflejo inmediato
     setCurrentUser({ ...currentUser, ...updates });
   };
 
-  const hasAccess = (view: View) => {
-    if (userRole === 'admin') return true;
-    if (userRole === 'instructor') return ['dashboard', 'clients', 'access', 'workouts'].includes(view);
-    return false; 
-  };
+  const hasAccess = (view: View) => { if (userRole === 'admin') return true; if (userRole === 'instructor') return ['dashboard', 'clients', 'access', 'workouts'].includes(view); return false; };
   const hasFeature = (feature: 'basic' | 'standard' | 'full') => { if (gymSettings.plan === 'Full') return true; if (gymSettings.plan === 'Standard' && feature !== 'full') return true; if (gymSettings.plan === 'Basic' && feature === 'basic') return true; return false; };
   const handleLogout = () => { setUserRole(null); setCurrentUser(undefined); setCurrentView('dashboard'); };
 
@@ -141,14 +203,8 @@ function App() {
 
   const debtorsCount = clients.filter(c => c.balance < 0).length;
   const NavItem = ({ view, label, icon: Icon, badge, requiredPlan }: { view: View, label: string, icon: any, badge?: number, requiredPlan?: 'basic' | 'standard' | 'full' }) => {
-    if (!hasAccess(view)) return null; 
-    if (requiredPlan && !hasFeature(requiredPlan)) return null;
-    return (
-      <button onClick={() => { setCurrentView(view); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-colors font-medium relative ${currentView === view ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'}`}>
-        <Icon size={18} /> <span className="text-sm">{label}</span>
-        {badge !== undefined && badge > 0 && <span className="absolute right-4 top-1/2 -translate-y-1/2 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{badge}</span>}
-      </button>
-    );
+    if (!hasAccess(view)) return null; if (requiredPlan && !hasFeature(requiredPlan)) return null;
+    return <button onClick={() => { setCurrentView(view); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-colors font-medium relative ${currentView === view ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'}`}><Icon size={18} /> <span className="text-sm">{label}</span>{badge !== undefined && badge > 0 && <span className="absolute right-4 top-1/2 -translate-y-1/2 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{badge}</span>}</button>;
   };
 
   return (
@@ -156,12 +212,7 @@ function App() {
       {isSidebarOpen && <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setIsSidebarOpen(false)} />}
       <aside className={`fixed lg:static inset-y-0 left-0 z-50 w-64 bg-white border-r border-slate-200 transform transition-transform duration-200 ease-in-out lg:transform-none ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} flex flex-col`}>
         <div className="p-6">
-          <div className="flex items-center gap-3 mb-8 px-2">
-            <div className="bg-blue-600 p-2 rounded-lg text-white shadow-lg shadow-blue-200 overflow-hidden">
-              {gymSettings.logoUrl ? <img src={gymSettings.logoUrl} className="w-5 h-5 object-cover" alt="" /> : <Dumbbell size={20} strokeWidth={3} />}
-            </div>
-            <div><h1 className="text-base font-bold text-slate-900 tracking-tight leading-none truncate max-w-[140px]">{gymSettings.name}</h1><span className="text-[10px] text-slate-400 uppercase font-bold">{userRole === 'admin' ? 'Administrador' : 'Instructor'}</span></div>
-          </div>
+          <div className="flex items-center gap-3 mb-8 px-2"><div className="bg-blue-600 p-2 rounded-lg text-white shadow-lg shadow-blue-200 overflow-hidden">{gymSettings.logoUrl ? <img src={gymSettings.logoUrl} className="w-5 h-5 object-cover" alt="" /> : <Dumbbell size={20} strokeWidth={3} />}</div><div><h1 className="text-base font-bold text-slate-900 tracking-tight leading-none truncate max-w-[140px]">{gymSettings.name}</h1><span className="text-[10px] text-slate-400 uppercase font-bold">{userRole === 'admin' ? 'Administrador' : 'Instructor'}</span></div></div>
           <nav className="space-y-1 flex-1 overflow-y-auto max-h-[calc(100vh-180px)] pr-2 custom-scrollbar">
             <div className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 mt-1">Gestión</div>
             <NavItem view="dashboard" label="Dashboard" icon={LayoutDashboard} requiredPlan="basic" />
@@ -169,49 +220,23 @@ function App() {
             <NavItem view="accounting" label="Contabilidad" icon={Calculator} requiredPlan="basic" />
             <NavItem view="access" label="Control Acceso" icon={ScanLine} requiredPlan="standard" />
             <NavItem view="inventory" label="Inventario" icon={Package} requiredPlan="full" />
-            {hasFeature('full') && (
-              <div className="pt-4 mt-4 border-t border-slate-100">
-                  <div className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Fidelización</div>
-                  <NavItem view="gamification" label="Gamificación" icon={Trophy} requiredPlan="full" />
-                  <NavItem view="workouts" label="Entrenamientos" icon={Activity} requiredPlan="full" />
-              </div>
-            )}
-            <div className="pt-4 mt-4 border-t border-slate-100">
-               <div className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Marketing</div>
-               <NavItem view="notifications" label="Cobranzas" icon={Bell} badge={debtorsCount} requiredPlan="basic" />
-               <NavItem view="marketing" label="CRM & Rescate" icon={HeartPulse} requiredPlan="standard" />
-            </div>
-            <div className="pt-4 mt-4 border-t border-slate-100">
-               <div className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Sistema</div>
-               <NavItem view="settings" label="Configuración" icon={SettingsIcon} />
-            </div>
+            {hasFeature('full') && <div className="pt-4 mt-4 border-t border-slate-100"><div className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Fidelización</div><NavItem view="gamification" label="Gamificación" icon={Trophy} requiredPlan="full" /><NavItem view="workouts" label="Entrenamientos" icon={Activity} requiredPlan="full" /></div>}
+            <div className="pt-4 mt-4 border-t border-slate-100"><div className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Marketing</div><NavItem view="notifications" label="Cobranzas" icon={Bell} badge={debtorsCount} requiredPlan="basic" /><NavItem view="marketing" label="CRM & Rescate" icon={HeartPulse} requiredPlan="standard" /></div>
+            <div className="pt-4 mt-4 border-t border-slate-100"><div className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Sistema</div><NavItem view="settings" label="Configuración" icon={SettingsIcon} /></div>
           </nav>
         </div>
-        <div className="mt-auto p-6 border-t border-slate-100">
-          <button onClick={handleLogout} className="flex items-center gap-3 px-2 w-full text-left hover:bg-slate-50 p-2 rounded-lg transition-colors">
-             <div className="w-8 h-8 rounded-full bg-slate-900 flex items-center justify-center font-bold text-white text-xs">{userRole === 'admin' ? 'AD' : 'IN'}</div>
-             <div className="text-sm flex-1"><p className="font-medium text-slate-900 capitalize">{userRole}</p><p className="text-slate-500 text-xs">Cerrar Sesión</p></div>
-             <LogOut size={16} className="text-slate-400" />
-          </button>
-        </div>
+        <div className="mt-auto p-6 border-t border-slate-100"><button onClick={handleLogout} className="flex items-center gap-3 px-2 w-full text-left hover:bg-slate-50 p-2 rounded-lg transition-colors"><div className="w-8 h-8 rounded-full bg-slate-900 flex items-center justify-center font-bold text-white text-xs">{userRole === 'admin' ? 'AD' : 'IN'}</div><div className="text-sm flex-1"><p className="font-medium text-slate-900 capitalize">{userRole}</p><p className="text-slate-500 text-xs">Cerrar Sesión</p></div><LogOut size={16} className="text-slate-400" /></button></div>
       </aside>
-
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <header className="bg-white border-b border-slate-200 lg:hidden p-4 flex items-center justify-between sticky top-0 z-30">
-          <div className="flex items-center gap-3">
-            <button onClick={() => setIsSidebarOpen(true)} className="text-slate-600"><Menu size={24} /></button>
-            <span className="font-bold text-lg text-slate-800">{gymSettings.name}</span>
-          </div>
-        </header>
+        <header className="bg-white border-b border-slate-200 lg:hidden p-4 flex items-center justify-between sticky top-0 z-30"><div className="flex items-center gap-3"><button onClick={() => setIsSidebarOpen(true)} className="text-slate-600"><Menu size={24} /></button><span className="font-bold text-lg text-slate-800">{gymSettings.name}</span></div></header>
         <div className="flex-1 overflow-auto bg-slate-50/50">
           <div className="max-w-7xl mx-auto">
              {currentView === 'dashboard' && <Dashboard transactions={transactions} clients={clients} checkIns={checkIns} settings={gymSettings} />}
-             {currentView === 'clients' && <Clients clients={clients} addClient={addClient} updateClient={updateClient} deleteClient={deleteClient} registerPayment={registerPayment} routines={routines} />}
+             {currentView === 'clients' && <Clients clients={clients} routines={routines} addClient={addClient} updateClient={updateClient} deleteClient={deleteClient} registerPayment={registerPayment} />}
              {currentView === 'accounting' && <Accounting transactions={transactions} addTransaction={addTransaction} updateTransaction={updateTransaction} deleteTransaction={deleteTransaction} clients={clients} />}
              {currentView === 'inventory' && <Inventory products={products} addProduct={addProduct} />}
              {currentView === 'access' && <AccessControl checkIns={checkIns} clients={clients} onCheckIn={handleCheckIn} onCheckOut={handleCheckOut} />}
              {currentView === 'notifications' && <Notifications clients={clients} />}
-             {/* Pasa rewards a gamification */}
              {currentView === 'gamification' && <Gamification clients={clients} rewards={gymSettings.rewards} />}
              {currentView === 'workouts' && <Workouts clients={clients} routines={routines} addRoutine={addRoutine} updateRoutine={updateRoutine} deleteRoutine={deleteRoutine} updateClient={updateClient} />}
              {currentView === 'marketing' && <MarketingCRM clients={clients} />}
