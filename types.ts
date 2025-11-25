@@ -9,7 +9,8 @@ export enum MembershipStatus {
   PENDING = 'Pendiente',
 }
 
-export type SubscriptionPlan = 'Basic' | 'Standard' | 'Full';
+// EDITADO: Agregamos 'CrossFit' como un plan de suscripción del software
+export type SubscriptionPlan = 'Basic' | 'Standard' | 'Full' | 'CrossFit';
 
 export type UserRole = 'admin' | 'instructor' | 'client';
 
@@ -35,11 +36,12 @@ export interface GymSettings {
     basic: number;
     intermediate: number;
     full: number;
+    crossfit: number; // NUEVO: Precio para la cuota de CrossFit
   };
   rewards?: Reward[];
 }
 
-// Estructura para el historial de rutinas
+// Estructura para el historial de rutinas (Gym Tradicional)
 export interface CompletedRoutine {
   date: string;
   routineName: string;
@@ -54,7 +56,7 @@ export interface Client {
   joinDate: string;
   status: MembershipStatus;
   balance: number; 
-  plan: string;
+  plan: string; // 'basic', 'intermediate', 'full', 'crossfit'
   points: number;
   level: 'Bronze' | 'Silver' | 'Gold';
   streak: number; 
@@ -65,7 +67,7 @@ export interface Client {
   emergencyContact?: string;
   lastMembershipPayment?: string;
   password?: string; 
-  routineHistory?: CompletedRoutine[]; // Historial de últimas 7 rutinas
+  routineHistory?: CompletedRoutine[]; 
 }
 
 export interface Transaction {
@@ -97,6 +99,7 @@ export interface CheckIn {
   checkoutTimestamp?: string | null;
 }
 
+// --- ESTRUCTURAS TRADICIONALES ---
 export interface Exercise {
   id: string;
   name: string;
@@ -113,6 +116,51 @@ export interface Routine {
   difficulty: 'Principiante' | 'Intermedio' | 'Avanzado';
   description: string;
   exercises: Exercise[]; 
+}
+
+// --- NUEVAS ESTRUCTURAS: MODO CROSSFIT ---
+
+export type WodType = 'AMRAP' | 'EMOM' | 'FOR_TIME' | 'TABATA' | 'STRENGTH';
+
+export interface WOD {
+  id: string;
+  date: string; // Fecha para la que está programado
+  name: string; // Ej: "Murph", "Fran" o "WOD Martes"
+  type: WodType;
+  description: string; // El texto completo del WOD
+  timeCap?: number; // En minutos
+  exercises?: string[]; // Lista simple de ejercicios si se desea
+}
+
+export interface ClassSession {
+  id: string;
+  date: string; // YYYY-MM-DD
+  time: string; // HH:MM
+  coachId: string;
+  coachName: string;
+  capacity: number;
+  attendees: string[]; // IDs de clientes reservados
+  wodId?: string; // WOD asignado a esta clase
+}
+
+export interface Booking {
+  id: string;
+  classId: string;
+  clientId: string;
+  clientName: string;
+  timestamp: string; // Cuándo reservó
+  status: 'confirmed' | 'cancelled' | 'waitlist';
+}
+
+export interface WODScore {
+  id: string;
+  wodId: string;
+  clientId: string;
+  clientName: string;
+  date: string;
+  score: string; // Ej: "15:30", "12 Rounds + 5"
+  isRx: boolean; // True = RX, False = Scaled
+  notes?: string;
 }
 
 export interface TimeSlot {
