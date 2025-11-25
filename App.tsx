@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, Users, Calculator, Bot, Menu, Dumbbell, ScanLine, Package, Bell, Trophy, HeartPulse, Activity, Settings as SettingsIcon, Monitor, Smartphone, LogOut } from 'lucide-react';
+import { LayoutDashboard, Users, Calculator, Menu, Dumbbell, ScanLine, Package, Bell, Trophy, HeartPulse, Activity, Settings as SettingsIcon, Monitor, Smartphone, LogOut } from 'lucide-react';
 import { Dashboard } from './components/Dashboard';
 import { Clients } from './components/Clients';
 import { Accounting } from './components/Accounting';
@@ -17,17 +17,18 @@ import { Client, Transaction, Product, CheckIn, GymSettings, MembershipStatus, T
 import { db } from './firebase';
 import { collection, setDoc, doc, onSnapshot, query, orderBy, deleteDoc, updateDoc } from 'firebase/firestore';
 
-type View = 'dashboard' | 'clients' | 'accounting' | 'ai' | 'access' | 'inventory' | 'notifications' | 'gamification' | 'workouts' | 'marketing' | 'settings';
+type View = 'dashboard' | 'clients' | 'accounting' | 'access' | 'inventory' | 'notifications' | 'gamification' | 'workouts' | 'marketing' | 'settings';
 
 function App() {
   // ESTADO DE SESIÓN
   const [userRole, setUserRole] = useState<UserRole | null>(null);
-  // Ahora currentUser puede ser Client O Staff para poder guardar el nombre del instructor
   const [currentUser, setCurrentUser] = useState<Client | Staff | undefined>(undefined);
 
+  // ESTADO DE LA APP
   const [currentView, setCurrentView] = useState<View>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
+  // DATOS
   const [clients, setClients] = useState<Client[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -43,28 +44,38 @@ function App() {
     rewards: []
   });
 
+  // --- Sincronización Firebase ---
   useEffect(() => {
     if (!userRole) return;
-    
+
     const qClients = query(collection(db, 'clients'), orderBy('name'));
     const unsubClients = onSnapshot(qClients, (s) => setClients(s.docs.map(d => ({ ...d.data(), id: d.id } as Client))));
+
     const qTrans = query(collection(db, 'transactions'), orderBy('date', 'desc'));
     const unsubTrans = onSnapshot(qTrans, (s) => setTransactions(s.docs.map(d => ({ ...d.data(), id: d.id } as Transaction))));
+
     const qProds = query(collection(db, 'products'), orderBy('name'));
     const unsubProds = onSnapshot(qProds, (s) => setProducts(s.docs.map(d => ({ ...d.data(), id: d.id } as Product))));
+
     const qCheck = query(collection(db, 'checkins'), orderBy('timestamp', 'desc')); 
     const unsubCheck = onSnapshot(qCheck, (s) => setCheckIns(s.docs.map(d => ({ ...d.data(), id: d.id } as CheckIn))));
+
     const qRout = query(collection(db, 'routines'));
     const unsubRout = onSnapshot(qRout, (s) => setRoutines(s.docs.map(d => ({ ...d.data(), id: d.id } as Routine))));
+
     const qStaff = query(collection(db, 'staff'));
     const unsubStaff = onSnapshot(qStaff, (s) => setStaffList(s.docs.map(d => ({ ...d.data(), id: d.id } as Staff))));
+
     const unsubSettings = onSnapshot(doc(db, 'settings', 'config'), (doc) => {
       if (doc.exists()) {
         const data = doc.data() as GymSettings;
         setGymSettings({ ...data, membershipPrices: data.membershipPrices || { basic: 0, intermediate: 0, full: 0 }, rewards: data.rewards || [] });
       }
     });
-    return () => { unsubClients(); unsubTrans(); unsubProds(); unsubCheck(); unsubRout(); unsubStaff(); unsubSettings(); };
+
+    return () => {
+      unsubClients(); unsubTrans(); unsubProds(); unsubCheck(); unsubRout(); unsubStaff(); unsubSettings();
+    };
   }, [userRole]);
 
   const getPlanPrice = (planCode: string) => {
@@ -72,7 +83,7 @@ function App() {
     return prices[planCode] || 0;
   };
 
-  // Helper para obtener la firma del usuario actual
+  // Helper para firma
   const getCurrentUserSignature = () => {
     if (!currentUser) return 'Sistema';
     const roleLabel = userRole === 'admin' ? 'Admin' : userRole === 'instructor' ? 'Instructor' : 'Cliente';
@@ -106,13 +117,13 @@ function App() {
             const newTransaction: Transaction = {
               id: crypto.randomUUID(),
               clientId: client.id,
-              clientName: client.name, // GUARDAMOS NOMBRE
+              clientName: client.name,
               description: `Renovación Cuota Automática`,
               amount: amount,
               date: new Date().toISOString().split('T')[0],
               type: TransactionType.INCOME,
               category: 'Cuota',
-              createdBy: 'Sistema Automático' // FIRMA AUTOMÁTICA
+              createdBy: 'Sistema Automático'
             };
             await setDoc(doc(db, 'transactions', newTransaction.id), newTransaction);
 
@@ -151,13 +162,13 @@ function App() {
         await setDoc(doc(db, 'transactions', crypto.randomUUID()), { 
             id: crypto.randomUUID(), 
             clientId: c.id, 
-            clientName: c.name, // GUARDAMOS NOMBRE
+            clientName: c.name,
             description: `Pago Inicial - Alta`, 
             amount: price, 
             date: new Date().toISOString().split('T')[0],
             type: TransactionType.INCOME, 
             category: 'Cuota',
-            createdBy: getCurrentUserSignature() // FIRMA
+            createdBy: getCurrentUserSignature()
         });
     }
   };
@@ -169,23 +180,19 @@ function App() {
     await setDoc(doc(db, 'transactions', crypto.randomUUID()), { 
         id: crypto.randomUUID(), 
         clientId: client.id, 
-        clientName: client.name, // GUARDAMOS NOMBRE
+        clientName: client.name,
         description: desc, 
         amount, 
         date: new Date().toISOString().split('T')[0], 
         type: TransactionType.INCOME, 
         category: 'Cuota',
-        createdBy: getCurrentUserSignature() // FIRMA
+        createdBy: getCurrentUserSignature()
     });
     await updateDoc(doc(db, 'clients', client.id), { balance: client.balance + amount });
   };
 
   const addTransaction = async (t: Transaction) => {
-      // Inyectamos la firma del usuario
-      const transactionWithUser = {
-          ...t,
-          createdBy: getCurrentUserSignature()
-      };
+      const transactionWithUser = { ...t, createdBy: getCurrentUserSignature() };
       await setDoc(doc(db, 'transactions', t.id), transactionWithUser);
   };
 
@@ -196,9 +203,11 @@ function App() {
     await setDoc(doc(db, 'checkins', crypto.randomUUID()), { id: crypto.randomUUID(), clientId: client.id, clientName: client.name, timestamp: new Date().toISOString(), checkoutTimestamp: null });
   };
   const handleCheckOut = async (id: string) => await updateDoc(doc(db, 'checkins', id), { checkoutTimestamp: new Date().toISOString() });
+  
   const addRoutine = async (r: Routine) => await setDoc(doc(db, 'routines', r.id), r);
   const updateRoutine = async (id: string, d: Partial<Routine>) => await updateDoc(doc(db, 'routines', id), d);
   const deleteRoutine = async (id: string) => { if(window.confirm('¿Seguro?')) await deleteDoc(doc(db, 'routines', id)); };
+
   const handleUpdateSettings = async (s: GymSettings) => { await setDoc(doc(db, 'settings', 'config'), s); setGymSettings(s); };
   const addStaff = async (s: Staff) => await setDoc(doc(db, 'staff', s.id), s);
   const deleteStaff = async (id: string) => { if(window.confirm('¿Borrar usuario?')) await deleteDoc(doc(db, 'staff', id)); };
@@ -206,30 +215,28 @@ function App() {
 
   const handleCompleteSession = async (pointsEarned: number) => {
     if (!currentUser || userRole !== 'client') return;
-    const clientUser = currentUser as Client; // Type casting seguro
-    
+    const clientUser = currentUser as Client;
     const lastVisit = new Date(clientUser.lastVisit);
     const today = new Date();
     const diffTime = Math.abs(today.getTime() - lastVisit.getTime());
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    
     let newStreak = clientUser.streak;
     if (diffDays === 1) newStreak += 1; else if (diffDays > 1) newStreak = 1;
-    
     const updates = { points: (clientUser.points || 0) + pointsEarned, streak: newStreak, lastVisit: new Date().toISOString() };
     await updateDoc(doc(db, 'clients', clientUser.id), updates);
     setCurrentUser({ ...clientUser, ...updates });
   };
 
-  const hasAccess = (view: View) => { if (userRole === 'admin') return true; if (userRole === 'instructor') return ['dashboard', 'clients', 'access', 'workouts'].includes(view); return false; };
-  const hasFeature = (feature: 'basic' | 'standard' | 'full') => { if (gymSettings.plan === 'Full') return true; if (gymSettings.plan === 'Standard' && feature !== 'full') return true; if (gymSettings.plan === 'Basic' && feature === 'basic') return true; return false; };
-  const handleLogout = () => { setUserRole(null); setCurrentUser(undefined); setCurrentView('dashboard'); };
+  const hasAccess = (view: View) => {
+    if (userRole === 'admin') return true;
+    if (userRole === 'instructor') return ['dashboard', 'clients', 'access', 'workouts'].includes(view);
+    return false; 
+  };
 
-  if (!userRole) return <Login onLogin={(role, data) => { 
-      setUserRole(role); 
-      // Guardamos los datos del usuario sea quien sea
-      if (data) setCurrentUser(data); 
-  }} />;
+  const handleLogout = () => { setUserRole(null); setCurrentUser(undefined); setCurrentView('dashboard'); };
+  const hasFeature = (feature: 'basic' | 'standard' | 'full') => { if (gymSettings.plan === 'Full') return true; if (gymSettings.plan === 'Standard' && feature !== 'full') return true; if (gymSettings.plan === 'Basic' && feature === 'basic') return true; return false; };
+
+  if (!userRole) return <Login onLogin={(role, data) => { setUserRole(role); if (data) setCurrentUser(data); }} />;
   
   if (userRole === 'client' && currentUser) return <ClientPortal client={currentUser as Client} settings={gymSettings} checkIns={checkIns} routines={routines} onLogout={handleLogout} onCompleteSession={handleCompleteSession} />;
 
@@ -237,7 +244,12 @@ function App() {
   const NavItem = ({ view, label, icon: Icon, badge, requiredPlan }: { view: View, label: string, icon: any, badge?: number, requiredPlan?: 'basic' | 'standard' | 'full' }) => {
     if (!hasAccess(view)) return null; 
     if (requiredPlan && !hasFeature(requiredPlan)) return null;
-    return <button onClick={() => { setCurrentView(view); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-colors font-medium relative ${currentView === view ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'}`}><Icon size={18} /> <span className="text-sm">{label}</span>{badge !== undefined && badge > 0 && <span className="absolute right-4 top-1/2 -translate-y-1/2 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{badge}</span>}</button>;
+    return (
+      <button onClick={() => { setCurrentView(view); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-colors font-medium relative ${currentView === view ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'}`}>
+        <Icon size={18} /> <span className="text-sm">{label}</span>
+        {badge !== undefined && badge > 0 && <span className="absolute right-4 top-1/2 -translate-y-1/2 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{badge}</span>}
+      </button>
+    );
   };
 
   return (
@@ -264,7 +276,7 @@ function App() {
         <header className="bg-white border-b border-slate-200 lg:hidden p-4 flex items-center justify-between sticky top-0 z-30"><div className="flex items-center gap-3"><button onClick={() => setIsSidebarOpen(true)} className="text-slate-600"><Menu size={24} /></button><span className="font-bold text-lg text-slate-800">{gymSettings.name}</span></div></header>
         <div className="flex-1 overflow-auto bg-slate-50/50">
           <div className="max-w-7xl mx-auto">
-             {currentView === 'dashboard' && <Dashboard transactions={transactions} clients={clients} checkIns={checkIns} settings={gymSettings} />}
+             {currentView === 'dashboard' && <Dashboard transactions={transactions} clients={clients} checkIns={checkIns} settings={gymSettings} userRole={userRole} />}
              {currentView === 'clients' && <Clients clients={clients} routines={routines} addClient={addClient} updateClient={updateClient} deleteClient={deleteClient} registerPayment={registerPayment} />}
              {currentView === 'accounting' && <Accounting transactions={transactions} addTransaction={addTransaction} updateTransaction={updateTransaction} deleteTransaction={deleteTransaction} clients={clients} />}
              {currentView === 'inventory' && <Inventory products={products} addProduct={addProduct} />}
