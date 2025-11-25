@@ -39,11 +39,11 @@ export interface GymSettings {
   rewards?: Reward[];
 }
 
-// NUEVO: Estructura para guardar una rutina completada en el historial
+// Estructura para el historial de rutinas
 export interface CompletedRoutine {
-  date: string;        // Fecha de finalización
-  routineName: string; // Nombre de la rutina que hizo
-  pointsEarned: number; // Puntos ganados esa sesión
+  date: string;
+  routineName: string;
+  pointsEarned: number;
 }
 
 export interface Client {
@@ -65,7 +65,7 @@ export interface Client {
   emergencyContact?: string;
   lastMembershipPayment?: string;
   password?: string; 
-  routineHistory?: CompletedRoutine[]; // NUEVO: Lista de últimas 7 rutinas
+  routineHistory?: CompletedRoutine[]; // Historial de últimas 7 rutinas
 }
 
 export interface Transaction {
