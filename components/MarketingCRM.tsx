@@ -1,99 +1,90 @@
 import React, { useState } from 'react';
 import { Client, GymSettings } from '../types';
-import { MessageCircle, Mail, AlertCircle, Smartphone } from 'lucide-react';
+import { HeartPulse, Gift, MessageCircle, Calendar, Clock } from 'lucide-react';
 
-interface NotificationsProps {
+interface MarketingCRMProps {
   clients: Client[];
   settings: GymSettings; // Recibe configuración
 }
 
-type MessageTemplate = 'reminder' | 'urgent' | 'promo';
+const MarketingCRM: React.FC<MarketingCRMProps> = ({ clients, settings }) => {
+  const [activeTab, setActiveTab] = useState<'rescue' | 'birthdays'>('rescue');
 
-export const Notifications: React.FC<NotificationsProps> = ({ clients, settings }) => {
-  const [template, setTemplate] = useState<MessageTemplate>('reminder');
+  const today = new Date();
+  const rescueList = clients.filter(c => {
+    if (c.status !== 'Activo') return false;
+    const lastVisit = new Date(c.lastVisit);
+    const diffTime = Math.abs(today.getTime() - lastVisit.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays > 15;
+  });
 
-  const debtors = clients.filter(client => client.balance < 0);
-  const totalDebt = debtors.reduce((acc, curr) => acc + Math.abs(curr.balance), 0);
+  const currentMonth = today.getMonth();
+  const birthdayList = clients.filter(c => {
+    const birthDate = new Date(c.birthDate + 'T00:00:00'); // Fix zona horaria
+    return birthDate.getMonth() === currentMonth;
+  });
 
-  const getMessage = (client: Client, type: MessageTemplate) => {
-    const amount = `$${Math.abs(client.balance).toFixed(2)}`;
-    const gymName = settings.name; // NOMBRE DINÁMICO
-    
-    switch (type) {
-      case 'reminder':
-        return `Hola ${client.name}, esperamos que estés disfrutando de ${gymName}. Te recordamos que tienes un saldo pendiente de ${amount}. ¿Podrías regularizarlo? ¡Gracias!`;
-      case 'urgent':
-        return `Estimado/a ${client.name}, le informamos desde ${gymName} que su cuenta presenta un saldo vencido de ${amount}. Por favor, realice el pago para evitar la suspensión del servicio.`;
-      case 'promo':
-        return `¡Hola ${client.name}! ${gymName} tiene una promo especial para saldar tu deuda de ${amount}. Si pagas hoy, te bonificamos un 5% del recargo. ¡Te esperamos!`;
-      default: return '';
-    }
-  };
-
-  const handleWhatsApp = (client: Client) => {
-    const message = getMessage(client, template);
-    const cleanPhone = client.phone.replace(/\D/g, ''); 
+  const handleWhatsApp = (phone: string, message: string) => {
+    const cleanPhone = phone.replace(/\D/g, '');
     const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
     window.open(url, '_blank');
   };
 
-  const handleEmail = (client: Client) => {
-    const message = getMessage(client, template);
-    const gymName = settings.name;
-    const subject = template === 'urgent' ? `Aviso de Pago Vencido - ${gymName}` : `Recordatorio de Saldo - ${gymName}`;
-    const url = `mailto:${client.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`;
-    window.open(url, '_blank');
-  };
+  const gymName = settings.name;
 
   return (
     <div className="p-4 sm:p-6 space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-            <AlertCircle className="text-red-500" /> Centro de Cobranzas
-          </h2>
-          <p className="text-slate-500">Gestiona deudas para {settings.name}</p>
-        </div>
-        
-        <div className="bg-red-50 border border-red-100 px-6 py-3 rounded-xl text-right">
-          <p className="text-xs font-semibold text-red-600 uppercase tracking-wider">Deuda Total</p>
-          <p className="text-3xl font-bold text-red-700">${totalDebt.toLocaleString()}</p>
-        </div>
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2"><HeartPulse className="text-pink-500" /> CRM & Marketing</h2>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="p-4 bg-slate-50 border-b border-slate-200 flex gap-4 items-center">
-            <span className="text-sm font-medium text-slate-700">Plantilla:</span>
-            <div className="flex bg-white rounded-lg border border-slate-200 p-1">
-              <button onClick={() => setTemplate('reminder')} className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${template === 'reminder' ? 'bg-blue-100 text-blue-700' : 'text-slate-600 hover:bg-slate-50'}`}>Recordatorio</button>
-              <button onClick={() => setTemplate('urgent')} className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${template === 'urgent' ? 'bg-red-100 text-red-700' : 'text-slate-600 hover:bg-slate-50'}`}>Urgente</button>
-              <button onClick={() => setTemplate('promo')} className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${template === 'promo' ? 'bg-purple-100 text-purple-700' : 'text-slate-600 hover:bg-slate-50'}`}>Promoción</button>
-            </div>
-        </div>
+      <div className="flex space-x-4 border-b border-slate-200">
+        <button onClick={() => setActiveTab('rescue')} className={`py-3 px-4 font-medium text-sm border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'rescue' ? 'border-pink-500 text-pink-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}><Clock size={16} /> Alertas Rescate ({rescueList.length})</button>
+        <button onClick={() => setActiveTab('birthdays')} className={`py-3 px-4 font-medium text-sm border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'birthdays' ? 'border-purple-500 text-purple-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}><Gift size={16} /> Cumpleaños ({birthdayList.length})</button>
+      </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-white border-b border-slate-100">
-              <tr><th className="px-6 py-4 font-semibold text-slate-700">Cliente</th><th className="px-6 py-4 font-semibold text-slate-700">Contacto</th><th className="px-6 py-4 font-semibold text-slate-700">Deuda</th><th className="px-6 py-4 font-semibold text-slate-700 text-right">Acciones</th></tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {debtors.map((client) => (
-                <tr key={client.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-6 py-4"><div className="font-medium text-slate-900">{client.name}</div></td>
-                  <td className="px-6 py-4"><div className="flex flex-col space-y-1"><span className="text-slate-600 flex items-center gap-1"><Smartphone size={12}/> {client.phone}</span><span className="text-slate-600 flex items-center gap-1"><Mail size={12}/> {client.email}</span></div></td>
-                  <td className="px-6 py-4"><span className="bg-red-100 text-red-700 px-2 py-1 rounded-md font-bold">${Math.abs(client.balance).toFixed(2)}</span></td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center justify-end gap-2">
-                      <button onClick={() => handleWhatsApp(client)} className="flex items-center gap-1 bg-[#25D366] hover:bg-[#20bd5a] text-white px-3 py-1.5 rounded-lg transition-colors shadow-sm font-medium"><MessageCircle size={16} /> WhatsApp</button>
-                      <button onClick={() => handleEmail(client)} className="flex items-center gap-1 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-3 py-1.5 rounded-lg transition-colors shadow-sm"><Mail size={16} /></button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden min-h-[300px]">
+        {activeTab === 'rescue' && (
+          <div>
+            <div className="p-4 bg-pink-50 border-b border-pink-100 text-pink-800 text-sm">Clientes ausentes (+15 días). Envíales un incentivo.</div>
+            {rescueList.length > 0 ? (
+               <div className="divide-y divide-slate-100">
+                 {rescueList.map(client => {
+                   const daysAbsent = Math.ceil((today.getTime() - new Date(client.lastVisit).getTime()) / (1000 * 60 * 60 * 24));
+                   return (
+                     <div key={client.id} className="p-4 flex items-center justify-between hover:bg-slate-50">
+                       <div><p className="font-bold text-slate-800">{client.name}</p><p className="text-sm text-slate-500">Ausente <span className="text-pink-600 font-bold">{daysAbsent} días</span></p></div>
+                       <button onClick={() => handleWhatsApp(client.phone, `Hola ${client.name}! Te extrañamos en ${gymName}. Vuelve esta semana y te regalamos un pase libre para un amigo. 💪`)} className="flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm"><MessageCircle size={16} /> Rescatar</button>
+                     </div>
+                   );
+                 })}
+               </div>
+            ) : ( <div className="p-8 text-center text-slate-500">¡Excelente! Tus clientes activos están asistiendo.</div> )}
+          </div>
+        )}
+
+        {activeTab === 'birthdays' && (
+          <div>
+             <div className="p-4 bg-purple-50 border-b border-purple-100 text-purple-800 text-sm">Cumpleañeros de {today.toLocaleString('es-ES', { month: 'long' })}.</div>
+            {birthdayList.length > 0 ? (
+               <div className="divide-y divide-slate-100">
+                 {birthdayList.map(client => {
+                   const birthDate = new Date(client.birthDate + 'T00:00:00');
+                   return (
+                     <div key={client.id} className="p-4 flex items-center justify-between hover:bg-slate-50">
+                       <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center"><Gift size={20} /></div><div><p className="font-bold text-slate-800">{client.name}</p><p className="text-sm text-slate-500 flex items-center gap-1"><Calendar size={12} /> {birthDate.getDate()} de {birthDate.toLocaleString('es-ES', { month: 'long' })}</p></div></div>
+                       <button onClick={() => handleWhatsApp(client.phone, `¡Feliz cumpleaños ${client.name}! 🎂 En ${gymName} queremos celebrarlo contigo. Pasa por recepción por tu regalo especial.`)} className="flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm"><MessageCircle size={16} /> Felicitar</button>
+                     </div>
+                   );
+                 })}
+               </div>
+            ) : ( <div className="p-8 text-center text-slate-500">No hay cumpleaños este mes.</div> )}
+          </div>
+        )}
       </div>
     </div>
   );
 };
+
+export default MarketingCRM;
