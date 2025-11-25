@@ -12,7 +12,7 @@ import { MarketingCRM } from './components/MarketingCRM';
 import { Settings } from './components/Settings';
 import { ClientPortal } from './components/ClientPortal';
 import { Login } from './components/Login';
-import { Client, Transaction, Product, CheckIn, GymSettings, MembershipStatus, TransactionType, Routine, UserRole, Staff } from './types';
+import { Client, Transaction, Product, CheckIn, GymSettings, MembershipStatus, TransactionType, Routine, UserRole, Staff, CompletedRoutine } from './types';
 
 import { db } from './firebase';
 import { collection, setDoc, doc, onSnapshot, query, orderBy, deleteDoc, updateDoc } from 'firebase/firestore';
@@ -83,7 +83,6 @@ function App() {
     return prices[planCode] || 0;
   };
 
-  // Helper para firma
   const getCurrentUserSignature = () => {
     if (!currentUser) return 'Sistema';
     const roleLabel = userRole === 'admin' ? 'Admin' : userRole === 'instructor' ? 'Instructor' : 'Cliente';
@@ -213,16 +212,38 @@ function App() {
   const deleteStaff = async (id: string) => { if(window.confirm('¿Borrar usuario?')) await deleteDoc(doc(db, 'staff', id)); };
   const updateStaffPassword = async (id: string, pass: string) => await updateDoc(doc(db, 'staff', id), { password: pass });
 
+  // MODIFICADO: Guardar historial de rutinas (Top 7)
   const handleCompleteSession = async (pointsEarned: number) => {
     if (!currentUser || userRole !== 'client') return;
     const clientUser = currentUser as Client;
+    
     const lastVisit = new Date(clientUser.lastVisit);
     const today = new Date();
     const diffTime = Math.abs(today.getTime() - lastVisit.getTime());
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
     let newStreak = clientUser.streak;
     if (diffDays === 1) newStreak += 1; else if (diffDays > 1) newStreak = 1;
-    const updates = { points: (clientUser.points || 0) + pointsEarned, streak: newStreak, lastVisit: new Date().toISOString() };
+
+    // CREAR HISTORIAL
+    const routineName = routines.find(r => r.id === clientUser.assignedRoutineId)?.name || 'Entrenamiento';
+    const newHistoryItem: CompletedRoutine = {
+        date: new Date().toISOString(),
+        routineName: routineName,
+        pointsEarned: pointsEarned
+    };
+
+    // Mantener solo las últimas 7
+    const currentHistory = clientUser.routineHistory || [];
+    const updatedHistory = [newHistoryItem, ...currentHistory].slice(0, 7);
+
+    const updates = { 
+        points: (clientUser.points || 0) + pointsEarned, 
+        streak: newStreak, 
+        lastVisit: new Date().toISOString(),
+        routineHistory: updatedHistory // GUARDAMOS HISTORIAL
+    };
+    
     await updateDoc(doc(db, 'clients', clientUser.id), updates);
     setCurrentUser({ ...clientUser, ...updates });
   };
@@ -236,7 +257,11 @@ function App() {
   const handleLogout = () => { setUserRole(null); setCurrentUser(undefined); setCurrentView('dashboard'); };
   const hasFeature = (feature: 'basic' | 'standard' | 'full') => { if (gymSettings.plan === 'Full') return true; if (gymSettings.plan === 'Standard' && feature !== 'full') return true; if (gymSettings.plan === 'Basic' && feature === 'basic') return true; return false; };
 
-  if (!userRole) return <Login onLogin={(role, data) => { setUserRole(role); if (data) setCurrentUser(data); }} />;
+  if (!userRole) return <Login onLogin={(role, data) => { 
+      setUserRole(role); 
+      // Guardamos los datos del usuario sea quien sea
+      if (data) setCurrentUser(data); 
+  }} />;
   
   if (userRole === 'client' && currentUser) return <ClientPortal client={currentUser as Client} settings={gymSettings} checkIns={checkIns} routines={routines} onLogout={handleLogout} onCompleteSession={handleCompleteSession} />;
 
@@ -281,10 +306,12 @@ function App() {
              {currentView === 'accounting' && <Accounting transactions={transactions} addTransaction={addTransaction} updateTransaction={updateTransaction} deleteTransaction={deleteTransaction} clients={clients} />}
              {currentView === 'inventory' && <Inventory products={products} addProduct={addProduct} />}
              {currentView === 'access' && <AccessControl checkIns={checkIns} clients={clients} onCheckIn={handleCheckIn} onCheckOut={handleCheckOut} />}
-             {currentView === 'notifications' && <Notifications clients={clients} />}
+             {/* Pasamos settings para mensajes dinámicos */}
+             {currentView === 'notifications' && <Notifications clients={clients} settings={gymSettings} />}
              {currentView === 'gamification' && <Gamification clients={clients} rewards={gymSettings.rewards} />}
              {currentView === 'workouts' && <Workouts clients={clients} routines={routines} addRoutine={addRoutine} updateRoutine={updateRoutine} deleteRoutine={deleteRoutine} updateClient={updateClient} />}
-             {currentView === 'marketing' && <MarketingCRM clients={clients} />}
+             {/* Pasamos settings para mensajes dinámicos */}
+             {currentView === 'marketing' && <MarketingCRM clients={clients} settings={gymSettings} />}
              {currentView === 'settings' && <Settings settings={gymSettings} onUpdateSettings={handleUpdateSettings} staffList={staffList} addStaff={addStaff} deleteStaff={deleteStaff} updateStaffPassword={updateStaffPassword} />}
           </div>
         </div>
