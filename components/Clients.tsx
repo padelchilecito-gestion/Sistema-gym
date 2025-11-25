@@ -90,7 +90,12 @@ export const Clients: React.FC<ClientsProps> = ({ clients, routines, addClient, 
     }
   };
 
-  const getPlanName = (planCode: string) => { const names: any = { basic: 'Básica', intermediate: 'Intermedia', full: 'Full' }; return names[planCode] || planCode; };
+  // EDITADO: Agregamos 'CrossFit' al mapeo de nombres
+  const getPlanName = (planCode: string) => { 
+    const names: any = { basic: 'Básica', intermediate: 'Intermedia', full: 'Full', crossfit: 'CrossFit' }; 
+    return names[planCode] || planCode; 
+  };
+  
   const getRoutineName = (id?: string | null) => { if(!id) return null; return routines.find(r => r.id === id)?.name || 'Rutina eliminada'; };
 
   const openRoutineModal = (client: Client) => {
@@ -138,7 +143,11 @@ export const Clients: React.FC<ClientsProps> = ({ clients, routines, addClient, 
                     <tr key={client.id} className="hover:bg-slate-50">
                         <td className="px-6 py-4 font-medium">{client.name}</td>
                         <td className="px-6 py-4 hidden md:table-cell text-slate-500">{client.phone}<br/><span className="text-xs">{client.email}</span></td>
-                        <td className="px-6 py-4"><span className="bg-slate-100 px-2 py-1 rounded text-xs font-bold text-slate-600">{getPlanName(client.plan)}</span></td>
+                        <td className="px-6 py-4">
+                          <span className={`px-2 py-1 rounded text-xs font-bold text-slate-600 ${client.plan === 'crossfit' ? 'bg-orange-100 text-orange-700' : 'bg-slate-100'}`}>
+                            {getPlanName(client.plan)}
+                          </span>
+                        </td>
                         <td className="px-6 py-4 text-slate-500">{client.joinDate}</td>
                         <td className={`px-6 py-4 font-bold ${client.balance < 0 ? 'text-red-600' : 'text-green-600'}`}>${client.balance}</td>
                         <td className="px-6 py-4 text-right relative">
@@ -209,6 +218,8 @@ export const Clients: React.FC<ClientsProps> = ({ clients, routines, addClient, 
                           <option value="basic">Cuota Básica</option>
                           <option value="intermediate">Cuota Intermedia</option>
                           <option value="full">Cuota Full</option>
+                          {/* EDITADO: Nueva opción CrossFit */}
+                          <option value="crossfit">Cuota CrossFit / Pase Libre</option>
                         </select>
                       </div>
                       <div>
