@@ -7,7 +7,7 @@ interface MarketingCRMProps {
   settings: GymSettings; // Recibe configuración
 }
 
-const MarketingCRM: React.FC<MarketingCRMProps> = ({ clients, settings }) => {
+export const MarketingCRM: React.FC<MarketingCRMProps> = ({ clients, settings }) => {
   const [activeTab, setActiveTab] = useState<'rescue' | 'birthdays'>('rescue');
 
   const today = new Date();
@@ -86,5 +86,3 @@ const MarketingCRM: React.FC<MarketingCRMProps> = ({ clients, settings }) => {
     </div>
   );
 };
-
-export default MarketingCRM;
