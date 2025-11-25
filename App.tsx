@@ -13,10 +13,10 @@ import { MarketingCRM } from './components/MarketingCRM';
 import { Settings } from './components/Settings';
 import { ClientPortal } from './components/ClientPortal';
 import { Login } from './components/Login';
-import { BookingsManager } from './components/BookingsManager'; // NUEVO
-import { WODBuilder } from './components/WODBuilder'; // NUEVO
+import { BookingsManager } from './components/BookingsManager';
+import { WODBuilder } from './components/WODBuilder';
 
-import { Client, Transaction, Product, CheckIn, GymSettings, MembershipStatus, TransactionType, Routine, UserRole, Staff, CompletedRoutine, ClassSession, WOD } from './types';
+import { Client, Transaction, Product, CheckIn, GymSettings, MembershipStatus, TransactionType, Routine, UserRole, Staff, CompletedRoutine, ClassSession, WOD, WODScore } from './types';
 
 import { db } from './firebase';
 import { collection, setDoc, doc, onSnapshot, query, orderBy, deleteDoc, updateDoc } from 'firebase/firestore';
@@ -104,61 +104,6 @@ function App() {
     return `${currentUser.name} (${roleLabel})`;
   };
 
-  // --- PROCESO DE COBRO AUTOMÁTICO ---
-  useEffect(() => {
-    if (clients.length === 0) return;
-
-    const checkMemberships = async () => {
-      const today = new Date();
-      today.setHours(0,0,0,0);
-      
-      clients.forEach(async (client) => {
-        if (client.status !== MembershipStatus.ACTIVE) return;
-
-        const lastPaymentStr = client.lastMembershipPayment || client.joinDate;
-        const lastPaymentDate = new Date(lastPaymentStr);
-        lastPaymentDate.setHours(0,0,0,0);
-        
-        const nextPaymentDate = new Date(lastPaymentDate);
-        nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 1);
-
-        if (today >= nextPaymentDate) {
-          const amount = getPlanPrice(client.plan);
-
-          if (amount && amount > 0) {
-            console.log(`Renovando cuota mensual a ${client.name}: $${amount}`);
-
-            const newTransaction: Transaction = {
-              id: crypto.randomUUID(),
-              clientId: client.id,
-              clientName: client.name,
-              description: `Renovación Cuota Automática`,
-              amount: amount,
-              date: new Date().toISOString().split('T')[0],
-              type: TransactionType.INCOME,
-              category: 'Cuota',
-              createdBy: 'Sistema Automático'
-            };
-            await setDoc(doc(db, 'transactions', newTransaction.id), newTransaction);
-
-            const newBalance = client.balance - amount;
-            await updateDoc(doc(db, 'clients', client.id), {
-              balance: newBalance,
-              lastMembershipPayment: nextPaymentDate.toISOString().split('T')[0]
-            });
-          }
-        }
-      });
-    };
-
-    const timer = setInterval(() => {
-      checkMemberships();
-    }, 10000); 
-
-    return () => clearInterval(timer);
-  }, [clients, gymSettings.membershipPrices]); 
-
-
   // --- Funciones de Acción ---
   const addClient = async (c: Client) => {
     const price = getPlanPrice(c.plan);
@@ -202,11 +147,42 @@ function App() {
   const deleteStaff = async (id: string) => { if(window.confirm('¿Borrar usuario?')) await deleteDoc(doc(db, 'staff', id)); };
   const updateStaffPassword = async (id: string, pass: string) => await updateDoc(doc(db, 'staff', id), { password: pass });
 
-  // NUEVAS ACCIONES CROSSFIT
+  // --- NUEVAS ACCIONES CROSSFIT ---
   const addSession = async (s: ClassSession) => await setDoc(doc(db, 'classes', s.id), s);
   const deleteSession = async (id: string) => { if(window.confirm('¿Borrar turno?')) await deleteDoc(doc(db, 'classes', id)); };
   const addWod = async (w: WOD) => await setDoc(doc(db, 'wods', w.id), w);
   const deleteWod = async (id: string) => { if(window.confirm('¿Borrar WOD?')) await deleteDoc(doc(db, 'wods', id)); };
+
+  // Funciones para el Portal de Cliente (Reservas y Scores)
+  const handleBookClass = async (classId: string) => {
+      if (!currentUser || userRole !== 'client') return;
+      const session = classSessions.find(s => s.id === classId);
+      if (!session) return;
+      
+      // Validación simple de capacidad
+      if (session.attendees.includes(currentUser.id)) return; // Ya está anotado
+      if (session.attendees.length >= session.capacity) { alert('Clase llena'); return; }
+
+      const updatedAttendees = [...session.attendees, currentUser.id];
+      await updateDoc(doc(db, 'classes', classId), { attendees: updatedAttendees });
+      alert('¡Reserva confirmada!');
+  };
+
+  const handleCancelBooking = async (classId: string) => {
+      if (!currentUser || userRole !== 'client') return;
+      const session = classSessions.find(s => s.id === classId);
+      if (!session) return;
+
+      const updatedAttendees = session.attendees.filter(id => id !== currentUser.id);
+      await updateDoc(doc(db, 'classes', classId), { attendees: updatedAttendees });
+      alert('Reserva cancelada.');
+  };
+
+  const handleSaveWodScore = async (score: WODScore) => {
+      await setDoc(doc(db, 'wod_scores', score.id), score);
+      // Opcional: Sumar puntos extra por registrar WOD
+      handleCompleteSession(15); 
+  };
 
   const handleCompleteSession = async (pointsEarned: number) => {
     if (!currentUser || userRole !== 'client') return;
@@ -235,13 +211,9 @@ function App() {
 
   const handleLogout = () => { setUserRole(null); setCurrentUser(undefined); setCurrentView('dashboard'); };
   
-  // LOGICA ACTUALIZADA DE FEATURES
   const hasFeature = (feature: 'basic' | 'standard' | 'full' | 'crossfit') => { 
-      // El plan CrossFit incluye TODO
       if (gymSettings.plan === 'CrossFit') return true;
-      
-      if (feature === 'crossfit') return false; // Si no es plan CrossFit, rechazar
-
+      if (feature === 'crossfit') return false; 
       if (gymSettings.plan === 'Full') return true;
       if (gymSettings.plan === 'Standard' && feature !== 'full') return true;
       if (gymSettings.plan === 'Basic' && feature === 'basic') return true;
@@ -250,7 +222,21 @@ function App() {
 
   if (!userRole) return <Login onLogin={(role, data) => { setUserRole(role); if (data) setCurrentUser(data); }} />;
   
-  if (userRole === 'client' && currentUser) return <ClientPortal client={currentUser as Client} settings={gymSettings} checkIns={checkIns} routines={routines} onLogout={handleLogout} onCompleteSession={handleCompleteSession} />;
+  if (userRole === 'client' && currentUser) return (
+      <ClientPortal 
+          client={currentUser as Client} 
+          settings={gymSettings} 
+          checkIns={checkIns} 
+          routines={routines} 
+          classSessions={classSessions}
+          wods={wods}
+          onLogout={handleLogout} 
+          onCompleteSession={handleCompleteSession}
+          onBookClass={handleBookClass}
+          onCancelBooking={handleCancelBooking}
+          onSaveWodScore={handleSaveWodScore}
+      />
+  );
 
   const debtorsCount = clients.filter(c => c.balance < 0).length;
   const NavItem = ({ view, label, icon: Icon, badge, requiredPlan }: { view: View, label: string, icon: any, badge?: number, requiredPlan?: 'basic' | 'standard' | 'full' | 'crossfit' }) => {
@@ -275,11 +261,8 @@ function App() {
             <NavItem view="dashboard" label="Dashboard" icon={LayoutDashboard} requiredPlan="basic" />
             <NavItem view="clients" label="Clientes" icon={Users} requiredPlan="basic" />
             <NavItem view="accounting" label="Contabilidad" icon={Calculator} requiredPlan="basic" />
-            
-            {/* Si es CrossFit, mostramos Turnos en lugar de control de acceso simple, o ambos */}
             <NavItem view="access" label="Control Acceso" icon={ScanLine} requiredPlan="standard" />
             
-            {/* NUEVA SECCIÓN CROSSFIT */}
             {hasFeature('crossfit') && (
                 <div className="pt-4 mt-4 border-t border-slate-100 bg-orange-50/50 rounded-xl p-2">
                     <div className="px-2 text-[10px] font-bold text-orange-600 uppercase tracking-widest mb-2">Modo Box</div>
@@ -290,7 +273,6 @@ function App() {
             
             <NavItem view="inventory" label="Inventario" icon={Package} requiredPlan="full" />
             
-            {/* Si NO es CrossFit, mostramos la sección tradicional de Entrenamientos */}
             {!hasFeature('crossfit') && hasFeature('full') && (
               <div className="pt-4 mt-4 border-t border-slate-100">
                 <div className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Fidelización</div>
@@ -299,7 +281,6 @@ function App() {
               </div>
             )}
             
-            {/* Si es CrossFit, Gamificación sigue siendo útil, pero Workouts (Rutinas estáticas) quizás menos */}
             {hasFeature('crossfit') && (
                <div className="pt-2">
                    <NavItem view="gamification" label="Leaderboard" icon={Trophy} requiredPlan="full" />
@@ -326,8 +307,6 @@ function App() {
              {currentView === 'workouts' && <Workouts clients={clients} routines={routines} addRoutine={addRoutine} updateRoutine={updateRoutine} deleteRoutine={deleteRoutine} updateClient={updateClient} />}
              {currentView === 'marketing' && <MarketingCRM clients={clients} settings={gymSettings} />}
              {currentView === 'settings' && <Settings settings={gymSettings} onUpdateSettings={handleUpdateSettings} staffList={staffList} addStaff={addStaff} deleteStaff={deleteStaff} updateStaffPassword={updateStaffPassword} />}
-             
-             {/* NUEVAS VISTAS */}
              {currentView === 'bookings' && <BookingsManager sessions={classSessions} staffList={staffList} addSession={addSession} deleteSession={deleteSession} />}
              {currentView === 'wod_planning' && <WODBuilder wods={wods} addWod={addWod} deleteWod={deleteWod} />}
           </div>
