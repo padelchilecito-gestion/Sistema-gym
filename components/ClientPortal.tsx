@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Client, GymSettings, CheckIn, Routine, Exercise } from '../types';
-import { QrCode, Trophy, Activity, User, LogOut, Flame, Clock, Dumbbell, CheckCircle, Circle, CheckSquare } from 'lucide-react';
+import { QrCode, Trophy, Activity, User, LogOut, Flame, Clock, Dumbbell, CheckCircle, Circle, CheckSquare, History, Calendar } from 'lucide-react';
 
 interface ClientPortalProps {
   client: Client; 
@@ -8,16 +8,15 @@ interface ClientPortalProps {
   checkIns: CheckIn[];
   routines: Routine[];
   onLogout: () => void;
-  onCompleteSession: (pointsEarned: number) => void; // NUEVO: Función para guardar puntos
+  onCompleteSession: (pointsEarned: number) => void; 
 }
 
 export const ClientPortal: React.FC<ClientPortalProps> = ({ client, settings, checkIns, routines, onLogout, onCompleteSession }) => {
-  const [activeTab, setActiveTab] = useState<'home' | 'qr' | 'profile'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'qr' | 'history' | 'profile'>('home');
   const activeSession = checkIns.find(c => c.clientId === client.id && !c.checkoutTimestamp);
   const isTraining = !!activeSession;
   
   const [completedExercises, setCompletedExercises] = useState<Set<string>>(new Set());
-  const [isSessionFinished, setIsSessionFinished] = useState(false); // Estado visual
 
   const myRoutine = routines.find(r => r.id === client.assignedRoutineId);
   let dayOfRoutine = 1;
@@ -36,13 +35,10 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ client, settings, ch
   };
 
   const handleFinishWorkout = () => {
-    // Cálculo de puntos: 10 pts base + 5 pts por ejercicio completado
     const points = 10 + (completedExercises.size * 5);
-    
     if (window.confirm(`¡Bien hecho! Has completado ${completedExercises.size} ejercicios.\n\n¿Terminar entrenamiento y canjear ${points} puntos?`)) {
       onCompleteSession(points);
-      setIsSessionFinished(true);
-      setCompletedExercises(new Set()); // Reset
+      setCompletedExercises(new Set()); 
     }
   };
 
@@ -65,13 +61,11 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ client, settings, ch
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
             {activeTab === 'home' && (
                 <>
-                    {/* TARJETA DE RUTINA */}
                     <div className="bg-white border border-slate-200 shadow-md rounded-xl overflow-hidden">
                         <div className="p-4 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
                             <div><h3 className="text-slate-800 font-bold flex items-center gap-2"><Dumbbell size={18} className="text-indigo-600"/> Rutina Hoy</h3></div>
                             <span className="bg-indigo-100 text-indigo-700 text-xs font-bold px-2 py-1 rounded">Día {dayOfRoutine}</span>
                         </div>
-                        
                         <div className="p-0">
                             {myRoutine && myRoutine.exercises && myRoutine.exercises.length > 0 ? (
                                 <div className="divide-y divide-slate-100">
@@ -92,38 +86,53 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ client, settings, ch
                                         );
                                     })}
                                 </div>
-                            ) : (
-                                <div className="p-8 text-center"><p className="text-slate-400 text-sm italic">Sin rutina asignada.</p></div>
-                            )}
+                            ) : ( <div className="p-8 text-center"><p className="text-slate-400 text-sm italic">Sin rutina asignada.</p></div> )}
                         </div>
-                        
-                        {/* Botón Finalizar */}
                         {myRoutine && (
                           <div className="p-4 bg-slate-50 border-t border-slate-100">
-                             <button onClick={handleFinishWorkout} className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 active:scale-95 transition-transform">
-                               <CheckSquare size={18} /> Terminar y Sumar Puntos
-                             </button>
+                             <button onClick={handleFinishWorkout} className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 active:scale-95 transition-transform"><CheckSquare size={18} /> Terminar y Sumar Puntos</button>
                           </div>
                         )}
                     </div>
-                    
-                    {/* Racha */}
                     <div className="bg-gradient-to-r from-orange-500 to-red-600 p-4 rounded-xl shadow-lg flex justify-between items-center text-white">
-                        <div>
-                          <p className="text-orange-100 text-xs uppercase font-bold">Tu Racha Actual</p>
-                          <p className="text-3xl font-bold flex items-center gap-2">{client.streak} <span className="text-base font-normal">días</span></p>
-                        </div>
+                        <div><p className="text-orange-100 text-xs uppercase font-bold">Tu Racha Actual</p><p className="text-3xl font-bold flex items-center gap-2">{client.streak} <span className="text-base font-normal">días</span></p></div>
                         <Flame className="text-white animate-pulse" size={40} fill="currentColor" />
                     </div>
                 </>
             )}
             
-            {activeTab === 'qr' && (
-                <div className="flex flex-col items-center py-10">
-                    <QrCode size={200} className="text-slate-900" />
-                    <p className="mt-4 text-slate-500 text-sm">Acceso al Gym</p>
+            {/* PESTAÑA DE HISTORIAL */}
+            {activeTab === 'history' && (
+                <div className="space-y-4">
+                    <h3 className="font-bold text-slate-800 text-lg mb-2 flex items-center gap-2"><History size={20}/> Últimos Entrenamientos</h3>
+                    {client.routineHistory && client.routineHistory.length > 0 ? (
+                        <div className="space-y-3">
+                            {client.routineHistory.map((historyItem, index) => (
+                                <div key={index} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex justify-between items-center">
+                                    <div>
+                                        <p className="font-bold text-slate-800">{historyItem.routineName}</p>
+                                        <div className="flex items-center gap-2 text-xs text-slate-500 mt-1">
+                                            <Calendar size={12}/> {new Date(historyItem.date).toLocaleDateString()} 
+                                            <span className="text-slate-300">|</span> 
+                                            <Clock size={12}/> {new Date(historyItem.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                        </div>
+                                    </div>
+                                    <div className="text-emerald-600 font-bold text-sm flex flex-col items-center">
+                                        +{historyItem.pointsEarned} <span className="text-[10px] text-emerald-400">PTS</span>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="p-10 text-center text-slate-400 border-2 border-dashed border-slate-200 rounded-xl">
+                            <Dumbbell size={40} className="mx-auto mb-2 opacity-20"/>
+                            <p>Aún no has completado rutinas.</p>
+                        </div>
+                    )}
                 </div>
             )}
+            
+            {activeTab === 'qr' && <div className="flex flex-col items-center py-10"><QrCode size={200} className="text-slate-900" /><p className="mt-4 text-slate-500 text-sm">Acceso al Gym</p></div>}
             {activeTab === 'profile' && (
                 <div className="p-4 bg-white rounded-xl border border-slate-100 shadow-sm space-y-2">
                     <p className="font-bold text-slate-800">Mis Datos</p>
@@ -133,9 +142,9 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ client, settings, ch
             )}
         </div>
 
-        {/* Nav */}
         <div className="absolute bottom-0 w-full bg-white border-t p-2 flex justify-around pb-4">
             <button onClick={()=>setActiveTab('home')} className={`flex flex-col items-center ${activeTab==='home'?'text-blue-600':'text-slate-400'}`}><Activity/><span className="text-[10px]">Rutina</span></button>
+            <button onClick={()=>setActiveTab('history')} className={`flex flex-col items-center ${activeTab==='history'?'text-blue-600':'text-slate-400'}`}><History/><span className="text-[10px]">Historial</span></button>
             <button onClick={()=>setActiveTab('qr')} className="bg-slate-900 text-white p-3 rounded-full -mt-8 shadow-lg"><QrCode/></button>
             <button onClick={()=>setActiveTab('profile')} className={`flex flex-col items-center ${activeTab==='profile'?'text-blue-600':'text-slate-400'}`}><User/><span className="text-[10px]">Perfil</span></button>
         </div>
