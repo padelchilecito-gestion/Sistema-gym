@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { GymSettings, SubscriptionPlan, Staff, Reward } from '../types';
-import { Building2, Save, ShieldCheck, Star, Zap, Lock, Unlock, X, DollarSign, UserPlus, Trash2, Key, Gift, Plus } from 'lucide-react';
+import { Building2, Save, ShieldCheck, Star, Zap, X, DollarSign, UserPlus, Trash2, Key, Gift, Plus, Dumbbell } from 'lucide-react';
 
 interface SettingsProps {
   settings: GymSettings;
@@ -21,7 +21,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, onUpdateSettings, 
   const [newStaffPass, setNewStaffPass] = useState('');
   const [newStaffRole, setNewStaffRole] = useState<'admin'|'instructor'>('instructor');
 
-  // Estados Premios (NUEVO)
+  // Estados Premios
   const [newRewardName, setNewRewardName] = useState('');
   const [newRewardPoints, setNewRewardPoints] = useState('');
 
@@ -45,7 +45,6 @@ export const Settings: React.FC<SettingsProps> = ({ settings, onUpdateSettings, 
     }
   };
 
-  // NUEVO: Agregar Premio
   const handleAddReward = (e: React.FormEvent) => {
     e.preventDefault();
     if(newRewardName && newRewardPoints) {
@@ -62,7 +61,6 @@ export const Settings: React.FC<SettingsProps> = ({ settings, onUpdateSettings, 
     }
   };
 
-  // NUEVO: Borrar Premio
   const handleDeleteReward = (id: string) => {
     setFormData({
       ...formData,
@@ -70,7 +68,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings, onUpdateSettings, 
     });
   };
 
-  const handlePriceChange = (key: 'basic' | 'intermediate' | 'full', value: string) => {
+  const handlePriceChange = (key: 'basic' | 'intermediate' | 'full' | 'crossfit', value: string) => {
     setFormData({ ...formData, membershipPrices: { ...formData.membershipPrices, [key]: parseFloat(value) || 0 } });
   };
 
@@ -106,15 +104,16 @@ export const Settings: React.FC<SettingsProps> = ({ settings, onUpdateSettings, 
             </div>
           </div>
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-            <h2 className="text-xl font-bold text-emerald-800 flex items-center gap-2 mb-6"><DollarSign size={20}/> Precios de Cuotas</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {['basic', 'intermediate', 'full'].map((plan) => (
+            <h2 className="text-xl font-bold text-emerald-800 flex items-center gap-2 mb-6"><DollarSign size={20}/> Precios de Cuotas (Mensualidad)</h2>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                {['basic', 'intermediate', 'full', 'crossfit'].map((plan) => (
                   <div key={plan}>
                     <label className="block text-sm font-bold text-slate-700 mb-1 capitalize">{plan}</label>
                     <input type="number" value={formData.membershipPrices?.[plan as keyof typeof formData.membershipPrices] || 0} onChange={(e) => handlePriceChange(plan as any, e.target.value)} className="w-full p-2 border rounded-lg font-bold" />
                   </div>
                 ))}
             </div>
+            <p className="text-xs text-slate-500 mt-2">Define aquí cuánto cobra el gimnasio a sus clientes por cada tipo de pase.</p>
           </div>
           <div className="flex justify-end"><button onClick={handleSave} className="bg-slate-900 text-white px-6 py-3 rounded-xl font-bold shadow-lg flex items-center gap-2"><Save size={18}/> Guardar</button></div>
         </div>
@@ -197,10 +196,12 @@ export const Settings: React.FC<SettingsProps> = ({ settings, onUpdateSettings, 
 
       {activeTab === 'subscription' && (
         <div className="space-y-6 animate-in fade-in">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <PlanCard type="Basic" price="$29/mes" color="slate" icon={ShieldCheck} features={['Gestión de Clientes', 'Contabilidad Básica', 'Cobranzas Simples', 'Dashboard']} />
               <PlanCard type="Standard" price="$59/mes" color="blue" icon={Zap} features={['Todo lo de Básico +', 'Control de Acceso', 'CRM & Marketing', 'Portal Clientes']} />
               <PlanCard type="Full" price="$99/mes" color="purple" icon={Star} features={['Todo lo de Estándar +', 'Gamificación', 'Entrenamientos', 'Inventario']} />
+              {/* NUEVO: Tarjeta de Plan CrossFit */}
+              <PlanCard type="CrossFit" price="$149/mes" color="orange" icon={Dumbbell} features={['Todo lo de Full +', 'Gestión de WODs', 'Reservas de Turnos', 'Pizarra / Leaderboard']} />
           </div>
           <div className="flex justify-end mt-4"><button onClick={handleSave} className="bg-slate-900 text-white px-6 py-3 rounded-xl font-bold shadow-lg hover:bg-slate-800 flex items-center gap-2"><Save size={18}/> Actualizar Plan</button></div>
         </div>
