@@ -39,6 +39,13 @@ export interface GymSettings {
   rewards?: Reward[];
 }
 
+// NUEVO: Estructura para guardar una rutina completada en el historial
+export interface CompletedRoutine {
+  date: string;        // Fecha de finalización
+  routineName: string; // Nombre de la rutina que hizo
+  pointsEarned: number; // Puntos ganados esa sesión
+}
+
 export interface Client {
   id: string;
   name: string;
@@ -53,23 +60,24 @@ export interface Client {
   streak: number; 
   lastVisit: string;
   birthDate: string; 
-  assignedRoutineId?: string;
-  routineStartDate?: string; 
+  assignedRoutineId?: string | null;
+  routineStartDate?: string | null; 
   emergencyContact?: string;
   lastMembershipPayment?: string;
   password?: string; 
+  routineHistory?: CompletedRoutine[]; // NUEVO: Lista de últimas 7 rutinas
 }
 
 export interface Transaction {
   id: string;
   clientId?: string;
-  clientName?: string; // NUEVO: Nombre del cliente vinculado
+  clientName?: string;
   description: string;
   amount: number;
   date: string;
   type: TransactionType;
   category: string;
-  createdBy?: string; // NUEVO: Quién realizó la operación (Ej: "Admin Juan" o "Sistema")
+  createdBy?: string; 
 }
 
 export interface Product {
