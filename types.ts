@@ -53,9 +53,8 @@ export interface Client {
   streak: number; 
   lastVisit: string;
   birthDate: string; 
-  // CORRECCIÓN: Permitimos null para poder "borrar" la rutina
-  assignedRoutineId?: string | null;
-  routineStartDate?: string | null; 
+  assignedRoutineId?: string;
+  routineStartDate?: string; 
   emergencyContact?: string;
   lastMembershipPayment?: string;
   password?: string; 
@@ -63,12 +62,14 @@ export interface Client {
 
 export interface Transaction {
   id: string;
-  clientId?: string; 
+  clientId?: string;
+  clientName?: string; // NUEVO: Nombre del cliente vinculado
   description: string;
   amount: number;
   date: string;
   type: TransactionType;
-  category: string; 
+  category: string;
+  createdBy?: string; // NUEVO: Quién realizó la operación (Ej: "Admin Juan" o "Sistema")
 }
 
 export interface Product {
