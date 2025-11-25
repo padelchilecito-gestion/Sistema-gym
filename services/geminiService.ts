@@ -2,7 +2,7 @@ import { GoogleGenAI } from "@google/genai";
 import { Transaction, Client, CheckIn, BusinessPrediction } from "../types";
 
 // CORRECCIÓN: Usamos el estándar de Vite (import.meta.env)
-// Si la clave no existe, usamos un string vacío para evitar que la app explote al iniciarse
+// Asegúrate de que en Vercel la variable se llame: VITE_GEMINI_API_KEY
 const apiKey = import.meta.env.VITE_GEMINI_API_KEY || "";
 
 const ai = new GoogleGenAI({ apiKey });
@@ -13,12 +13,12 @@ export const analyzeFinancialData = async (
   query: string
 ): Promise<string> => {
   
-  if (!apiKey) return "Error: API Key no configurada.";
+  if (!apiKey) return "Error: API Key no configurada. Revisa tus variables de entorno.";
 
   const financialSummary = {
     totalClients: clients.length,
-    activeClients: clients.filter(c => c.status === 'Activo').length, // Nota: Asegúrate de que coincida con tu Enum
-    clientsWithDebt: clients.filter(c => c.balance > 0).map(c => ({ name: c.name, debt: c.balance })),
+    activeClients: clients.filter(c => c.status === 'Activo').length, 
+    clientsWithDebt: clients.filter(c => c.balance < 0).map(c => ({ name: c.name, debt: c.balance })),
     recentTransactions: transactions.slice(0, 50), 
   };
 
@@ -39,14 +39,14 @@ export const analyzeFinancialData = async (
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-2.0-flash', 
       contents: query,
       config: {
         systemInstruction: systemPrompt,
       },
     });
 
-    return response.text || "No pude generar un análisis en este momento.";
+    return response.text() || "No pude generar un análisis en este momento.";
   } catch (error) {
     console.error("Error calling Gemini API:", error);
     return "Lo siento, hubo un error al conectar con el asistente financiero. Verifica tu conexión o clave API.";
@@ -92,7 +92,7 @@ export const generateBusinessPrediction = async (
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-2.0-flash',
       contents: "Genera el análisis predictivo JSON",
       config: {
         systemInstruction: systemPrompt,
@@ -100,8 +100,8 @@ export const generateBusinessPrediction = async (
       },
     });
 
-    if (response.text) {
-      return JSON.parse(response.text) as BusinessPrediction;
+    if (response.text()) {
+      return JSON.parse(response.text()) as BusinessPrediction;
     }
     return null;
   } catch (error) {
