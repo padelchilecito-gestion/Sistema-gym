@@ -4,43 +4,47 @@ import { MessageCircle, Mail, AlertCircle, Smartphone } from 'lucide-react';
 
 interface NotificationsProps {
   clients: Client[];
-  settings: GymSettings; // Recibe configuración
+  settings: GymSettings;
 }
 
-type MessageTemplate = 'reminder' | 'urgent' | 'promo';
+type MessageTemplateMode = 'reminder' | 'urgent' | 'promo';
 
 export const Notifications: React.FC<NotificationsProps> = ({ clients, settings }) => {
-  const [template, setTemplate] = useState<MessageTemplate>('reminder');
+  const [templateMode, setTemplateMode] = useState<MessageTemplateMode>('reminder');
 
   const debtors = clients.filter(client => client.balance < 0);
   const totalDebt = debtors.reduce((acc, curr) => acc + Math.abs(curr.balance), 0);
 
-  const getMessage = (client: Client, type: MessageTemplate) => {
+  // FUNCIÓN HELPER PARA OBTENER EL TEXTO DINÁMICO
+  const getMessage = (client: Client, mode: MessageTemplateMode) => {
     const amount = `$${Math.abs(client.balance).toFixed(2)}`;
-    const gymName = settings.name; // NOMBRE DINÁMICO
+    const gymName = settings.name;
     
-    switch (type) {
-      case 'reminder':
-        return `Hola ${client.name}, esperamos que estés disfrutando de ${gymName}. Te recordamos que tienes un saldo pendiente de ${amount}. ¿Podrías regularizarlo? ¡Gracias!`;
-      case 'urgent':
-        return `Estimado/a ${client.name}, le informamos desde ${gymName} que su cuenta presenta un saldo vencido de ${amount}. Por favor, realice el pago para evitar la suspensión del servicio.`;
-      case 'promo':
-        return `¡Hola ${client.name}! ${gymName} tiene una promo especial para saldar tu deuda de ${amount}. Si pagas hoy, te bonificamos un 5% del recargo. ¡Te esperamos!`;
-      default: return '';
-    }
+    let templateId = '';
+    if (mode === 'reminder') templateId = 'whatsapp_debt_reminder';
+    else if (mode === 'urgent') templateId = 'whatsapp_debt_urgent';
+    else if (mode === 'promo') templateId = 'whatsapp_debt_promo'; 
+
+    const template = settings.messageTemplates?.find(t => t.id === templateId);
+    let content = template ? template.content : `Hola {nombre}, tienes una deuda de {deuda} en {gym}.`;
+
+    return content
+        .replace(/{nombre}/g, client.name)
+        .replace(/{deuda}/g, amount)
+        .replace(/{gym}/g, gymName);
   };
 
   const handleWhatsApp = (client: Client) => {
-    const message = getMessage(client, template);
+    const message = getMessage(client, templateMode);
     const cleanPhone = client.phone.replace(/\D/g, ''); 
     const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
     window.open(url, '_blank');
   };
 
   const handleEmail = (client: Client) => {
-    const message = getMessage(client, template);
+    const message = getMessage(client, templateMode);
     const gymName = settings.name;
-    const subject = template === 'urgent' ? `Aviso de Pago Vencido - ${gymName}` : `Recordatorio de Saldo - ${gymName}`;
+    const subject = templateMode === 'urgent' ? `Aviso de Pago Vencido - ${gymName}` : `Recordatorio de Saldo - ${gymName}`;
     const url = `mailto:${client.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`;
     window.open(url, '_blank');
   };
@@ -63,12 +67,12 @@ export const Notifications: React.FC<NotificationsProps> = ({ clients, settings 
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="p-4 bg-slate-50 border-b border-slate-200 flex gap-4 items-center">
-            <span className="text-sm font-medium text-slate-700">Plantilla:</span>
+            <span className="text-sm font-medium text-slate-700">Plantilla Activa:</span>
             <div className="flex bg-white rounded-lg border border-slate-200 p-1">
-              <button onClick={() => setTemplate('reminder')} className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${template === 'reminder' ? 'bg-blue-100 text-blue-700' : 'text-slate-600 hover:bg-slate-50'}`}>Recordatorio</button>
-              <button onClick={() => setTemplate('urgent')} className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${template === 'urgent' ? 'bg-red-100 text-red-700' : 'text-slate-600 hover:bg-slate-50'}`}>Urgente</button>
-              <button onClick={() => setTemplate('promo')} className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${template === 'promo' ? 'bg-purple-100 text-purple-700' : 'text-slate-600 hover:bg-slate-50'}`}>Promoción</button>
+              <button onClick={() => setTemplateMode('reminder')} className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${templateMode === 'reminder' ? 'bg-blue-100 text-blue-700' : 'text-slate-600 hover:bg-slate-50'}`}>Recordatorio</button>
+              <button onClick={() => setTemplateMode('urgent')} className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${templateMode === 'urgent' ? 'bg-red-100 text-red-700' : 'text-slate-600 hover:bg-slate-50'}`}>Urgente</button>
             </div>
+            <p className="text-xs text-slate-400 ml-auto hidden sm:block">Edita estos textos en Sistema {'>'} Plantillas Mensajes</p>
         </div>
 
         <div className="overflow-x-auto">
@@ -90,6 +94,7 @@ export const Notifications: React.FC<NotificationsProps> = ({ clients, settings 
                   </td>
                 </tr>
               ))}
+              {debtors.length === 0 && <tr><td colSpan={4} className="p-8 text-center text-slate-500">¡Excelente! No hay deudas registradas.</td></tr>}
             </tbody>
           </table>
         </div>
