@@ -4,7 +4,7 @@ import { Search, Plus, MoreHorizontal, User, Mail, Phone, Edit, Trash2, DollarSi
 
 interface ClientsProps {
   clients: Client[];
-  routines: Routine[]; // NUEVO
+  routines: Routine[]; 
   addClient: (client: Client) => void;
   updateClient: (id: string, data: Partial<Client>) => void;
   deleteClient: (id: string) => void;
@@ -16,17 +16,15 @@ export const Clients: React.FC<ClientsProps> = ({ clients, routines, addClient, 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-  const [isRoutineModalOpen, setIsRoutineModalOpen] = useState(false); // NUEVO MODAL
+  const [isRoutineModalOpen, setIsRoutineModalOpen] = useState(false); 
   
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   
-  // Estado de formularios
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentDescription, setPaymentDescription] = useState('Pago Mensualidad');
   const [formData, setFormData] = useState<Partial<Client>>({ status: MembershipStatus.ACTIVE, balance: 0, plan: 'basic' });
   
-  // Estado para cambiar rutina en el modal
   const [selectedNewRoutineId, setSelectedNewRoutineId] = useState('');
 
   const filteredClients = clients.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase()) || c.email.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -48,12 +46,12 @@ export const Clients: React.FC<ClientsProps> = ({ clients, routines, addClient, 
     setActiveMenuId(null);
   };
 
-  // NUEVO: Asignar o Cambiar Rutina desde el Modal
+  // CORRECCIÓN AQUÍ: Usamos null en lugar de undefined
   const handleAssignRoutine = () => {
     if (selectedClient) {
         if (selectedNewRoutineId === '') {
-            // Desasignar
-            updateClient(selectedClient.id, { assignedRoutineId: undefined, routineStartDate: undefined });
+            // Desasignar: Enviamos null para limpiar el campo en Firebase
+            updateClient(selectedClient.id, { assignedRoutineId: null, routineStartDate: null });
         } else {
             // Asignar nueva
             updateClient(selectedClient.id, { assignedRoutineId: selectedNewRoutineId, routineStartDate: new Date().toISOString() });
@@ -62,9 +60,10 @@ export const Clients: React.FC<ClientsProps> = ({ clients, routines, addClient, 
     }
   };
 
-  // Helper
   const getPlanName = (planCode: string) => { const names: any = { basic: 'Básica', intermediate: 'Intermedia', full: 'Full' }; return names[planCode] || planCode; };
-  const getRoutineName = (id?: string) => { 
+  
+  // CORRECCIÓN DE TIPO: Aceptamos string | null
+  const getRoutineName = (id?: string | null) => { 
       if(!id) return null;
       return routines.find(r => r.id === id)?.name || 'Rutina eliminada';
   };
@@ -93,7 +92,7 @@ export const Clients: React.FC<ClientsProps> = ({ clients, routines, addClient, 
                     <th className="px-6 py-4">Cliente</th>
                     <th className="px-6 py-4 hidden md:table-cell">Contacto</th>
                     <th className="px-6 py-4">Plan</th>
-                    <th className="px-6 py-4">Rutina</th> {/* NUEVA COLUMNA */}
+                    <th className="px-6 py-4">Rutina</th>
                     <th className="px-6 py-4">Saldo</th>
                     <th className="px-6 py-4 text-right"></th>
                 </tr>
@@ -104,8 +103,6 @@ export const Clients: React.FC<ClientsProps> = ({ clients, routines, addClient, 
                         <td className="px-6 py-4 font-medium">{client.name}</td>
                         <td className="px-6 py-4 hidden md:table-cell text-slate-500">{client.email}</td>
                         <td className="px-6 py-4"><span className="bg-slate-100 px-2 py-1 rounded text-xs font-bold text-slate-600">{getPlanName(client.plan)}</span></td>
-                        
-                        {/* INFO RUTINA */}
                         <td className="px-6 py-4">
                             {client.assignedRoutineId ? (
                                 <span className="text-indigo-600 font-medium text-xs flex items-center gap-1"><Dumbbell size={12}/> {getRoutineName(client.assignedRoutineId)}</span>
@@ -113,7 +110,6 @@ export const Clients: React.FC<ClientsProps> = ({ clients, routines, addClient, 
                                 <span className="text-slate-400 text-xs italic">Sin asignar</span>
                             )}
                         </td>
-
                         <td className={`px-6 py-4 font-bold ${client.balance < 0 ? 'text-red-600' : 'text-green-600'}`}>${client.balance}</td>
                         <td className="px-6 py-4 text-right relative">
                             <button onClick={(e) => {e.stopPropagation(); setActiveMenuId(activeMenuId === client.id ? null : client.id)}} className="text-slate-400 p-2"><MoreHorizontal size={20}/></button>
@@ -189,7 +185,7 @@ export const Clients: React.FC<ClientsProps> = ({ clients, routines, addClient, 
           </div>
       )}
 
-      {/* Otros Modales (Edit/Create/Payment) - Reutilizados simplificados */}
+      {/* Otros Modales */}
       {(isModalOpen || isEditModalOpen) && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={e => e.stopPropagation()}>
               <div className="bg-white p-6 rounded-xl w-full max-w-lg">
