@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, Users, Calculator, Menu, Dumbbell, ScanLine, Package, Bell, Trophy, HeartPulse, Activity, Settings as SettingsIcon, Monitor, Smartphone, LogOut } from 'lucide-react';
+import { LayoutDashboard, Users, Calculator, Menu, Dumbbell, ScanLine, Package, Bell, Trophy, HeartPulse, Activity, Settings as SettingsIcon, Monitor, Smartphone, LogOut, Brain, Sparkles } from 'lucide-react';
 import { Dashboard } from './components/Dashboard';
 import { Clients } from './components/Clients';
 import { Accounting } from './components/Accounting';
@@ -12,12 +12,14 @@ import { MarketingCRM } from './components/MarketingCRM';
 import { Settings } from './components/Settings';
 import { ClientPortal } from './components/ClientPortal';
 import { Login } from './components/Login';
+import { PredictiveAnalytics } from './components/PredictiveAnalytics';
+import { AIAssistant } from './components/AIAssistant';
 import { Client, Transaction, Product, CheckIn, GymSettings, MembershipStatus, TransactionType, Routine, UserRole, Staff, CompletedRoutine } from './types';
 
 import { db } from './firebase';
 import { collection, setDoc, doc, onSnapshot, query, orderBy, deleteDoc, updateDoc } from 'firebase/firestore';
 
-type View = 'dashboard' | 'clients' | 'accounting' | 'access' | 'inventory' | 'notifications' | 'gamification' | 'workouts' | 'marketing' | 'settings';
+type View = 'dashboard' | 'clients' | 'accounting' | 'access' | 'inventory' | 'notifications' | 'gamification' | 'workouts' | 'marketing' | 'settings' | 'analytics' | 'assistant';
 
 function App() {
   // ESTADO DE SESIÓN
@@ -250,7 +252,7 @@ function App() {
 
   const hasAccess = (view: View) => {
     if (userRole === 'admin') return true;
-    if (userRole === 'instructor') return ['dashboard', 'clients', 'access', 'workouts'].includes(view);
+    if (userRole === 'instructor') return ['dashboard', 'clients', 'access', 'workouts', 'assistant'].includes(view);
     return false; 
   };
 
@@ -290,7 +292,22 @@ function App() {
             <NavItem view="accounting" label="Contabilidad" icon={Calculator} requiredPlan="basic" />
             <NavItem view="access" label="Control Acceso" icon={ScanLine} requiredPlan="standard" />
             <NavItem view="inventory" label="Inventario" icon={Package} requiredPlan="full" />
-            {hasFeature('full') && <div className="pt-4 mt-4 border-t border-slate-100"><div className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Fidelización</div><NavItem view="gamification" label="Gamificación" icon={Trophy} requiredPlan="full" /><NavItem view="workouts" label="Entrenamientos" icon={Activity} requiredPlan="full" /></div>}
+            
+            {hasFeature('full') && (
+              <div className="pt-4 mt-4 border-t border-slate-100">
+                <div className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Fidelización</div>
+                <NavItem view="gamification" label="Gamificación" icon={Trophy} requiredPlan="full" />
+                <NavItem view="workouts" label="Entrenamientos" icon={Activity} requiredPlan="full" />
+              </div>
+            )}
+
+            {/* SECCIÓN INTELLIGENCE (NUEVA) */}
+            <div className="pt-4 mt-4 border-t border-slate-100">
+                <div className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Inteligencia</div>
+                <NavItem view="analytics" label="Predicciones IA" icon={Brain} requiredPlan="full" />
+                <NavItem view="assistant" label="Asistente Smart" icon={Sparkles} requiredPlan="standard" />
+            </div>
+
             <div className="pt-4 mt-4 border-t border-slate-100"><div className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Marketing</div><NavItem view="notifications" label="Cobranzas" icon={Bell} badge={debtorsCount} requiredPlan="basic" /><NavItem view="marketing" label="CRM & Rescate" icon={HeartPulse} requiredPlan="standard" /></div>
             <div className="pt-4 mt-4 border-t border-slate-100"><div className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Sistema</div><NavItem view="settings" label="Configuración" icon={SettingsIcon} /></div>
           </nav>
@@ -313,6 +330,10 @@ function App() {
              {/* Pasamos settings para mensajes dinámicos */}
              {currentView === 'marketing' && <MarketingCRM clients={clients} settings={gymSettings} />}
              {currentView === 'settings' && <Settings settings={gymSettings} onUpdateSettings={handleUpdateSettings} staffList={staffList} addStaff={addStaff} deleteStaff={deleteStaff} updateStaffPassword={updateStaffPassword} />}
+             
+             {/* Componentes de IA conectados */}
+             {currentView === 'analytics' && <PredictiveAnalytics transactions={transactions} checkIns={checkIns} />}
+             {currentView === 'assistant' && <AIAssistant transactions={transactions} clients={clients} />}
           </div>
         </div>
       </main>
