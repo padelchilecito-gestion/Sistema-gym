@@ -75,12 +75,12 @@ export const Settings: React.FC<SettingsProps> = ({ settings, onUpdateSettings, 
   const initiatePlanChange = (plan: SubscriptionPlan) => { if (plan === formData.plan) return; setPendingPlan(plan); setPasswordInput(''); setError(''); setIsAuthModalOpen(true); };
   const verifyPassword = (e: React.FormEvent) => { e.preventDefault(); if (passwordInput.trim() === SUPER_ADMIN_PASSWORD) { if (pendingPlan) setFormData({ ...formData, plan: pendingPlan }); setIsAuthModalOpen(false); setPendingPlan(null); setPasswordInput(''); } else setError('Contraseña incorrecta.'); };
 
-  const PlanCard = ({ type, price, features, icon: Icon, color }: any) => (
+  // MODIFICADO: Eliminada la prop 'price' y su renderizado
+  const PlanCard = ({ type, features, icon: Icon, color }: any) => (
     <div onClick={() => initiatePlanChange(type)} className={`cursor-pointer border-2 rounded-xl p-6 transition-all relative overflow-hidden group ${formData.plan === type ? `border-${color}-500 bg-${color}-50 shadow-md` : 'border-slate-200 hover:border-slate-300 bg-white'}`}>
       {formData.plan === type && <div className={`absolute top-0 right-0 bg-${color}-500 text-white text-xs font-bold px-3 py-1 rounded-bl-lg`}>ACTIVO</div>}
       <div className={`w-12 h-12 rounded-lg bg-${color}-100 text-${color}-600 flex items-center justify-center mb-4`}><Icon size={24} /></div>
-      <h3 className="text-xl font-bold text-slate-900 mb-1">{type}</h3>
-      <p className="text-slate-500 text-sm mb-4">{price}</p>
+      <h3 className="text-xl font-bold text-slate-900 mb-4">{type}</h3> {/* mb-1 cambiado a mb-4 para espaciado */}
       <ul className="space-y-2">{features.map((f: string, i: number) => <li key={i} className="flex items-center gap-2 text-sm text-slate-700"><div className={`w-1.5 h-1.5 rounded-full bg-${color}-500`} /> {f}</li>)}</ul>
     </div>
   );
@@ -197,11 +197,10 @@ export const Settings: React.FC<SettingsProps> = ({ settings, onUpdateSettings, 
       {activeTab === 'subscription' && (
         <div className="space-y-6 animate-in fade-in">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <PlanCard type="Basic" price="$29/mes" color="slate" icon={ShieldCheck} features={['Gestión de Clientes', 'Contabilidad Básica', 'Cobranzas Simples', 'Dashboard']} />
-              <PlanCard type="Standard" price="$59/mes" color="blue" icon={Zap} features={['Todo lo de Básico +', 'Control de Acceso', 'CRM & Marketing', 'Portal Clientes']} />
-              <PlanCard type="Full" price="$99/mes" color="purple" icon={Star} features={['Todo lo de Estándar +', 'Gamificación', 'Entrenamientos', 'Inventario']} />
-              {/* NUEVO: Tarjeta de Plan CrossFit */}
-              <PlanCard type="CrossFit" price="$149/mes" color="orange" icon={Dumbbell} features={['Todo lo de Full +', 'Gestión de WODs', 'Reservas de Turnos', 'Pizarra / Leaderboard']} />
+              <PlanCard type="Basic" color="slate" icon={ShieldCheck} features={['Gestión de Clientes', 'Contabilidad Básica', 'Cobranzas Simples', 'Dashboard']} />
+              <PlanCard type="Standard" color="blue" icon={Zap} features={['Todo lo de Básico +', 'Control de Acceso', 'CRM & Marketing', 'Portal Clientes']} />
+              <PlanCard type="Full" color="purple" icon={Star} features={['Todo lo de Estándar +', 'Gamificación', 'Entrenamientos', 'Inventario']} />
+              <PlanCard type="CrossFit" color="orange" icon={Dumbbell} features={['Todo lo de Full +', 'Gestión de WODs', 'Reservas de Turnos', 'Pizarra / Leaderboard']} />
           </div>
           <div className="flex justify-end mt-4"><button onClick={handleSave} className="bg-slate-900 text-white px-6 py-3 rounded-xl font-bold shadow-lg hover:bg-slate-800 flex items-center gap-2"><Save size={18}/> Actualizar Plan</button></div>
         </div>
